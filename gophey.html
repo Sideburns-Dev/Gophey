@@ -2767,7 +2767,8 @@ function tick(ts){
       it.t-=1;
       // Gophey acts as a roaming hub — deliver if item reaches his tile
       const gpK=`${GP.gx},${GP.gy}`;
-      if(!GP.underground&&(nk===gpK||(it.gx===GP.gx&&it.gy===GP.gy&&it.t<0.15))){deliver(it.res);it.on=false;pop(GP.gx,GP.gy,'#f0c060');continue;}
+      const _nextIsRocket=nt&&(nt.type==='crashed-rocket'||nt.type==='escape-rocket-core'||nt.type==='escape-rocket-wing');
+      if(!_nextIsRocket&&!GP.underground&&(nk===gpK||(it.gx===GP.gx&&it.gy===GP.gy&&it.t<0.15))){deliver(it.res);it.on=false;pop(GP.gx,GP.gy,'#f0c060');continue;}
       if(nt&&nt.type==='crashed-rocket'){
         const r=getRocket();
         let consumed=false;

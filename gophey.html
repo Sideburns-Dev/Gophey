@@ -2774,9 +2774,9 @@ function tick(ts){
         if(it.res==='radish'&&(r.supplies.radish||0)<LAUNCH_SUPPLIES.radish){r.supplies.radish=(r.supplies.radish||0)+1;consumed=true;checkRocketLaunch();}
         else if(it.res==='coal'&&(r.supplies.coal||0)<LAUNCH_SUPPLIES.coal){r.supplies.coal=(r.supplies.coal||0)+1;consumed=true;checkRocketLaunch();}
         else if(it.res==='sulfur'&&(r.supplies.sulfur||0)<LAUNCH_SUPPLIES.sulfur){r.supplies.sulfur=(r.supplies.sulfur||0)+1;consumed=true;checkRocketLaunch();}
-        else if(it.res==='iron-plate'){for(const p of ROCKET_PARTS){const s=r.parts[p.id];if(!s||s.repaired)continue;if((s.ip||0)<p.req.ip){s.ip=(s.ip||0)+1;consumed=true;break;}}if(!consumed){deliver(it.res);consumed=true;}}
-        else if(it.res==='glass'){for(const p of ROCKET_PARTS){const s=r.parts[p.id];if(!s||s.repaired)continue;if((s.glass||0)<p.req.glass){s.glass=(s.glass||0)+1;consumed=true;break;}}if(!consumed){deliver(it.res);consumed=true;}}
-        else{deliver(it.res);consumed=true;}
+        else if(it.res==='iron-plate'){for(const p of ROCKET_PARTS){const s=r.parts[p.id];if(!s||s.repaired)continue;if((s.ip||0)<p.req.ip){s.ip=(s.ip||0)+1;consumed=true;break;}}if(!consumed){it.t=0.95;continue;}} // stall if rocket doesn't need it
+        else if(it.res==='glass'){for(const p of ROCKET_PARTS){const s=r.parts[p.id];if(!s||s.repaired)continue;if((s.glass||0)<p.req.glass){s.glass=(s.glass||0)+1;consumed=true;break;}}if(!consumed){it.t=0.95;continue;}}
+        else{it.t=0.95;continue;} // rocket doesn't need this resource right now
         if(consumed){it.on=false;continue;}
         it.t=0.95;continue;
       }
@@ -4041,10 +4041,10 @@ function tick(ts){
           if(it.res==='radish'&&(r.supplies.radish||0)<LAUNCH_SUPPLIES.radish){r.supplies.radish=(r.supplies.radish||0)+1;consumed=true;checkRocketLaunch();}
           else if(it.res==='coal'&&(r.supplies.coal||0)<LAUNCH_SUPPLIES.coal){r.supplies.coal=(r.supplies.coal||0)+1;consumed=true;checkRocketLaunch();}
           else if(it.res==='sulfur'&&(r.supplies.sulfur||0)<LAUNCH_SUPPLIES.sulfur){r.supplies.sulfur=(r.supplies.sulfur||0)+1;consumed=true;checkRocketLaunch();}
-          else if(it.res==='iron-plate'){for(const p of ROCKET_PARTS){const s=r.parts[p.id];if(!s||s.repaired)continue;if((s.ip||0)<p.req.ip){s.ip=(s.ip||0)+1;consumed=true;break;}}if(!consumed){deliver(it.res);consumed=true;}}
-          else if(it.res==='glass'){for(const p of ROCKET_PARTS){const s=r.parts[p.id];if(!s||s.repaired)continue;if((s.glass||0)<p.req.glass){s.glass=(s.glass||0)+1;consumed=true;break;}}if(!consumed){deliver(it.res);consumed=true;}}
-          else if(it.res==='copper-wire'){for(const p of ROCKET_PARTS){const s=r.parts[p.id];if(!s||s.repaired)continue;if((s.cw||0)<(p.req.cw||0)){s.cw=(s.cw||0)+1;consumed=true;break;}}if(!consumed){deliver(it.res);consumed=true;}}
-          else{deliver(it.res);consumed=true;}
+          else if(it.res==='iron-plate'){for(const p of ROCKET_PARTS){const s=r.parts[p.id];if(!s||s.repaired)continue;if((s.ip||0)<p.req.ip){s.ip=(s.ip||0)+1;consumed=true;break;}}if(!consumed){it.t=0.95;break;}}
+          else if(it.res==='glass'){for(const p of ROCKET_PARTS){const s=r.parts[p.id];if(!s||s.repaired)continue;if((s.glass||0)<p.req.glass){s.glass=(s.glass||0)+1;consumed=true;break;}}if(!consumed){it.t=0.95;break;}}
+          else if(it.res==='copper-wire'){for(const p of ROCKET_PARTS){const s=r.parts[p.id];if(!s||s.repaired)continue;if((s.cw||0)<(p.req.cw||0)){s.cw=(s.cw||0)+1;consumed=true;break;}}if(!consumed){it.t=0.95;break;}}
+          else{it.t=0.95;break;} // rocket doesn't accept this resource
           if(consumed){it.on=false;break;}
         }
       }

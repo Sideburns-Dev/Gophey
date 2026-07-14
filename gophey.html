@@ -2840,7 +2840,7 @@ function tick(ts){
     const[agx,agy]=k.split(',').map(Number);
     if(!t._grabTimer)t._grabTimer=0;
     t._grabTimer+=dt;
-    if(t._grabTimer<0.4)continue; // 0.4s cooldown
+    if(t._grabTimer<1.0)continue; // 1.0s cooldown
     // Don't reset timer here — only reset after a successful grab
     // Look at all 4 adjacent belt tiles for items to grab
     let didGrab=false;
@@ -5204,7 +5204,7 @@ function splitterIn(k, res, armKey, srcGx, srcGy){
     dstGx:out.gx, dstGy:out.gy,
     startAngle, endAngle,
     t:0,
-    dur:0.5,  // flight duration
+    dur:0.8,  // flight duration
     deliver:deliverToOutput,
     delivered:false,
   });

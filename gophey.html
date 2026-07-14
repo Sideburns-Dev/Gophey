@@ -2168,6 +2168,10 @@ function tickGasExplosion(dt){
 }
 
 const aliens=[];    // alien entities
+// ── ALIEN COLONY ──────────────────────────────────────────────────────────────
+const colony={gx:0,gy:0,radius:0,active:false,walls:new Set(),mothers:[],workers:[],bombers:[],growTimer:0,_sendTimer:0};
+const alienEggs=[];   // {gx,gy,timer,maxTimer,type,_carried}
+const alienBombs=[];  // {gx,gy,timer,carried,placed}
 const robots=[];    // robot entities
 const lasers=[];    // laser beams
 const parts=[];     // particles
@@ -3048,12 +3052,15 @@ function tick(ts){
         if(GS._waveSurfaceDelay<=0){
           GS._waveSurfaceDelay=null;
           GS.waveActiveTimer=0;
+          if(!colony.active)initColony();
           spawnWave();
           GS.waveCooldown=cooldownTime;
         }
       }
     }
   }
+
+  tickColony(dt);
 
   // Alien movement
   for(const al of aliens){
@@ -5627,6 +5634,230 @@ function waveCooldownFor(){
   return cooldowns[tier]||120;
 }
 
+// ── ALIEN COLONY FUNCTIONS ─────────────────────────────────────────────────────
+function nearestPlayerBuilding(fx,fy){
+  let best=null,bd=9999;
+  for(const type of ['hub','smelter','lab','miner','turret','wall','belt','belt-right','belt-up','belt-left','splitter']){
+    for(const k of (gridByType[type]||new Set())){
+      const[gx,gy]=k.split(',').map(Number);
+      const d=Math.hypot(gx-fx,gy-fy);
+      if(d<bd){bd=d;best={gx,gy};}
+    }
+  }
+  return best;
+}
+
+function bombDropSpot(fx,fy){
+  const nb=nearestPlayerBuilding(fx,fy);
+  if(!nb)return null;
+  for(const d of [{dx:1,dy:0},{dx:-1,dy:0},{dx:0,dy:1},{dx:0,dy:-1}]){
+    const gx=nb.gx+d.dx,gy=nb.gy+d.dy;
+    if(!grid[`${gx},${gy}`]&&gx>=0&&gx<WW&&gy>=0&&gy<WH)return{gx,gy};
+  }
+  return{gx:nb.gx,gy:nb.gy};
+}
+
+function explodeColonyBomb(gx,gy){
+  for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++){
+    const tx=gx+dx,ty=gy+dy;
+    pop(tx,ty,'#ff5000');
+    const k=`${tx},${ty}`;
+    if(grid[k])destroyAt(tx,ty);
+    if(!GP.underground&&Math.round(GP.gx)===tx&&Math.round(GP.gy)===ty){
+      GP.hp=Math.max(0,GP.hp-GP.maxHp*0.75);_dmgFlashTimer=0.8;
+      if(GP.hp<=0)gopheyDie();
+    }
+  }
+  biteImpact(gx,gy,'#ff6600');
+  notif('💥 Alien bomb exploded! 3×3 blast!');
+}
+
+function expandColony(){
+  const r=colony.radius;
+  for(let dx=-r;dx<=r;dx++)for(let dy=-r;dy<=r;dy++){
+    if(Math.hypot(dx,dy)<r-1||Math.hypot(dx,dy)>r+0.7)continue;
+    if(Math.random()<0.35)continue; // organic gaps
+    const gx=colony.gx+dx,gy=colony.gy+dy;
+    if(gx>=0&&gx<WW&&gy>=0&&gy<WH)colony.walls.add(`${gx},${gy}`);
+  }
+}
+
+function initColony(){
+  const cx=Math.floor(WW/2),cy=Math.floor(WH/2);
+  const angle=Math.random()*Math.PI*2;
+  const dist=Math.min(WW,WH)*0.4;
+  colony.gx=Math.max(12,Math.min(WW-12,Math.round(cx+Math.cos(angle)*dist)));
+  colony.gy=Math.max(12,Math.min(WH-12,Math.round(cy+Math.sin(angle)*dist)));
+  colony.radius=4;
+  colony.active=true;
+  colony.walls.clear();
+  colony.mothers.length=0;
+  colony.workers.length=0;
+  colony.bombers.length=0;
+  colony.growTimer=0;
+  aliens.length=0;alienEggs.length=0;alienBombs.length=0;
+  expandColony();
+  // 2 starter mothers inside the base
+  for(let i=0;i<2;i++){
+    const a=i*Math.PI;
+    colony.mothers.push({gx:Math.round(colony.gx+Math.cos(a)*2),gy:Math.round(colony.gy+Math.sin(a)*2),hp:30,maxHp:30,timer:i*8});
+  }
+  // 2 starter workers
+  colony.workers.push({gx:colony.gx+1,gy:colony.gy,hp:15,maxHp:15,timer:0,carrying:null});
+  colony.workers.push({gx:colony.gx-1,gy:colony.gy,hp:15,maxHp:15,timer:0,carrying:null});
+  notif('👁 An alien colony has formed in the distance…');
+}
+
+function tickColony(dt){
+  if(!colony.active||!GS.aliensOn)return;
+
+  // ── GROW BASE OVER TIME ───────────────────────────────────────────────────
+  colony.growTimer+=dt;
+  if(colony.growTimer>=90){  // expand every 90 seconds
+    colony.growTimer=0;
+    colony.radius=Math.min(colony.radius+1,14);
+    expandColony();
+  }
+
+  // ── MOTHERS: LAY EGGS ─────────────────────────────────────────────────────
+  // Egg rate adapts to player's building count — more buildings = faster hatching
+  const _buildCount=(gridByType['smelter']?.size||0)+(gridByType['lab']?.size||0)+(gridByType['turret']?.size||0)+(gridByType['miner']?.size||0);
+  const _eggRate=Math.max(8, 20-_buildCount*1.5); // 8–20s, gets faster as player grows
+  const _hatchTime=Math.max(20, 45-_buildCount*2); // eggs hatch faster too
+
+  for(const m of colony.mothers){
+    if(m.dead)continue;
+    m.timer+=dt;
+    if(m.timer<_eggRate)continue;
+    m.timer=0;
+    // Try to lay egg on adjacent empty tile
+    const dirs=[{dx:1,dy:0},{dx:-1,dy:0},{dx:0,dy:1},{dx:0,dy:-1},{dx:1,dy:1},{dx:-1,dy:1},{dx:1,dy:-1},{dx:-1,dy:-1}];
+    // shuffle
+    for(let i=dirs.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[dirs[i],dirs[j]]=[dirs[j],dirs[i]];}
+    for(const d of dirs){
+      const gx=m.gx+d.dx,gy=m.gy+d.dy;
+      const k=`${gx},${gy}`;
+      if(grid[k]||colony.walls.has(k)||alienEggs.some(e=>e.gx===gx&&e.gy===gy))continue;
+      if(gx<0||gx>=WW||gy<0||gy>=WH)continue;
+      // Egg type weighted by player threat level
+      const r=Math.random();
+      const hasTurrets=(gridByType['turret']?.size||0)>0;
+      const type=r<0.50?'attacker':r<0.70?'worker':r<(hasTurrets?0.82:0.88)?'mother':'bomber';
+      alienEggs.push({gx,gy,timer:0,maxTimer:_hatchTime+Math.random()*10,type,_carried:false});
+      break;
+    }
+  }
+
+  // ── BOMBERS: LAY BOMBS ────────────────────────────────────────────────────
+  for(const b of colony.bombers){
+    if(b.dead)continue;
+    b.bombTimer=(b.bombTimer||0)+dt;
+    if(b.bombTimer<30)continue;
+    b.bombTimer=0;
+    for(const d of [{dx:1,dy:0},{dx:-1,dy:0},{dx:0,dy:1},{dx:0,dy:-1}]){
+      const gx=b.gx+d.dx,gy=b.gy+d.dy;
+      if(!grid[`${gx},${gy}`]&&!alienBombs.some(ab=>ab.gx===gx&&ab.gy===gy)&&gx>=0&&gx<WW&&gy>=0&&gy<WH){
+        alienBombs.push({gx,gy,timer:0,carried:false,placed:false});
+        break;
+      }
+    }
+  }
+
+  // ── HATCH EGGS ────────────────────────────────────────────────────────────
+  for(let i=alienEggs.length-1;i>=0;i--){
+    const egg=alienEggs[i];
+    egg.timer+=dt;
+    if(egg.timer<egg.maxTimer)continue;
+    alienEggs.splice(i,1);
+    const{gx,gy,type}=egg;
+    if(gx<0||gx>=WW||gy<0||gy>=WH)continue;
+    if(type==='attacker'){
+      const hp=15+Math.floor((GS.wavesTotal||0)*3);
+      aliens.push({gx,gy,hp,maxHp:hp,dead:false,mt:0,aa:0,tier:1,_moveRate:0.35,facing:'right'});
+    } else if(type==='worker'){
+      colony.workers.push({gx,gy,hp:15,maxHp:15,timer:0,carrying:null,facing:'right'});
+    } else if(type==='mother'){
+      colony.mothers.push({gx,gy,hp:30,maxHp:30,timer:Math.random()*8});
+    } else if(type==='bomber'){
+      colony.bombers.push({gx,gy,hp:20,maxHp:20,bombTimer:0});
+    }
+  }
+
+  // ── WORKERS: PICK UP AND MOVE EGGS/BOMBS ─────────────────────────────────
+  for(const w of colony.workers){
+    if(w.dead)continue;
+    w.timer=(w.timer||0)+dt;
+    if(w.timer<0.6)continue;
+    w.timer=0;
+
+    if(!w.carrying){
+      // Prefer uncarried bombs, then eggs with room to breathe
+      const nearBomb=alienBombs.find(b=>!b.carried&&!b.placed&&Math.abs(b.gx-w.gx)<=2&&Math.abs(b.gy-w.gy)<=2);
+      if(nearBomb){nearBomb.carried=true;w.carrying={type:'bomb',ref:nearBomb};continue;}
+      // Pick up an egg that's too close to other eggs (crowded)
+      const crowdedEgg=alienEggs.find(e=>!e._carried&&Math.abs(e.gx-w.gx)<=2&&Math.abs(e.gy-w.gy)<=2&&
+        alienEggs.filter(e2=>Math.abs(e2.gx-e.gx)<=1&&Math.abs(e2.gy-e.gy)<=1).length>2);
+      if(crowdedEgg){crowdedEgg._carried=true;w.carrying={type:'egg',ref:crowdedEgg};continue;}
+    }
+
+    if(w.carrying){
+      const c=w.carrying;
+      let tgx=w.gx,tgy=w.gy;
+      if(c.type==='bomb'){
+        const bt=bombDropSpot(w.gx,w.gy);
+        if(bt){tgx=bt.gx;tgy=bt.gy;}
+      } else {
+        // Move egg to isolated spot inside colony radius
+        let best=null,bestScore=-1;
+        for(let tries=0;tries<8;tries++){
+          const a=Math.random()*Math.PI*2,r=2+Math.random()*(colony.radius-2);
+          const cx=Math.round(colony.gx+Math.cos(a)*r),cy=Math.round(colony.gy+Math.sin(a)*r);
+          if(cx<0||cx>=WW||cy<0||cy>=WH||grid[`${cx},${cy}`])continue;
+          const neighbours=alienEggs.filter(e=>Math.abs(e.gx-cx)<=1&&Math.abs(e.gy-cy)<=1&&e!==c.ref).length;
+          const score=4-neighbours;
+          if(score>bestScore){bestScore=score;best={gx:cx,gy:cy};}
+        }
+        if(best){tgx=best.gx;tgy=best.gy;}
+      }
+      // Step toward target
+      const dx=Math.sign(tgx-w.gx),dy=Math.sign(tgy-w.gy);
+      const mx=dx!==0?dx:0,my=dx===0?dy:0;
+      if(mx!==0||my!==0){
+        const ngx=w.gx+mx,ngy=w.gy+my;
+        if(ngx>=0&&ngx<WW&&ngy>=0&&ngy<WH&&!grid[`${ngx},${ngy}`]){
+          w.gx=ngx;w.gy=ngy;c.ref.gx=ngx;c.ref.gy=ngy;
+        }
+      }
+      // Drop at destination
+      if(w.gx===tgx&&w.gy===tgy){
+        if(c.type==='bomb'){c.ref.carried=false;c.ref.placed=true;}
+        else{c.ref._carried=false;}
+        w.carrying=null;
+      }
+    } else {
+      // Idle: drift back toward colony
+      if(Math.random()<0.25){
+        const dx=Math.sign(colony.gx-w.gx),dy=Math.sign(colony.gy-w.gy);
+        const ngx=w.gx+(dx!==0?dx:0),ngy=w.gy+(dx===0?dy:0);
+        if(!grid[`${ngx},${ngy}`])w.gx=ngx,w.gy=ngy;
+      }
+    }
+  }
+
+  // ── PLACED BOMBS FUSE ─────────────────────────────────────────────────────
+  for(let i=alienBombs.length-1;i>=0;i--){
+    const b=alienBombs[i];
+    if(!b.placed)continue;
+    b.timer+=dt;
+    if(b.timer>=10){alienBombs.splice(i,1);explodeColonyBomb(b.gx,b.gy);}
+  }
+
+  // ── CLEAN DEAD UNITS ──────────────────────────────────────────────────────
+  ['mothers','workers','bombers'].forEach(arr=>{
+    colony[arr]=colony[arr].filter(u=>!u.dead);
+  });
+}
+
 function spawnWave(){
   const tier=alienTier();
   if(tier===0)return;
@@ -6749,6 +6980,86 @@ function draw(){
     }
   }
 
+  // ── COLONY RENDER ──────────────────────────────────────────────────────────
+  if(!GP.underground&&colony.active){
+    CTX.save();
+    // Alien walls
+    for(const wk of colony.walls){
+      const[wgx,wgy]=wk.split(',').map(Number);
+      const wpx=wgx*TILE-camX,wpy=wgy*TILE-camY;
+      if(wpx<-TILE||wpx>W+TILE||wpy<-TILE||wpy>H+TILE)continue;
+      CTX.fillStyle='#1a0030';CTX.fillRect(wpx,wpy,TILE,TILE);
+      CTX.fillStyle='rgba(160,0,240,0.25)';CTX.fillRect(wpx+1,wpy+1,TILE-2,TILE-2);
+      CTX.strokeStyle='rgba(120,0,200,0.4)';CTX.lineWidth=1;CTX.strokeRect(wpx,wpy,TILE,TILE);
+    }
+    // Eggs
+    for(const egg of alienEggs){
+      const epx=egg.gx*TILE-camX,epy=egg.gy*TILE-camY;
+      if(epx<-TILE||epx>W+TILE||epy<-TILE||epy>H+TILE)continue;
+      const prog=egg.timer/egg.maxTimer;
+      const pulse=0.55+0.45*Math.sin(Date.now()/350+egg.gx*1.3+egg.gy);
+      CTX.fillStyle=egg.type==='bomber'?`rgba(255,80,0,${pulse})`:`rgba(${130+Math.round(prog*100)},0,255,${pulse})`;
+      CTX.beginPath();CTX.ellipse(epx+TILE/2,epy+TILE/2,TILE*0.28*(0.6+prog*0.4),TILE*0.22*(0.6+prog*0.4),0,0,Math.PI*2);CTX.fill();
+      // hatch progress arc
+      CTX.strokeStyle=`rgba(255,200,255,${0.5*prog})`;CTX.lineWidth=1.5;
+      CTX.beginPath();CTX.arc(epx+TILE/2,epy+TILE/2,TILE*0.33,0,Math.PI*2*prog);CTX.stroke();
+    }
+    // Bombs
+    for(const bomb of alienBombs){
+      const bpx=bomb.gx*TILE-camX,bpy=bomb.gy*TILE-camY;
+      if(bpx<-TILE||bpx>W+TILE||bpy<-TILE||bpy>H+TILE)continue;
+      if(bomb.placed){
+        const fuse=bomb.timer/10;
+        const blink=Math.sin(Date.now()/Math.max(40,280*(1-fuse)))>0;
+        CTX.fillStyle=blink?'#ff2000':'#660000';CTX.fillRect(bpx+3,bpy+3,TILE-6,TILE-6);
+        CTX.font='11px monospace';CTX.textAlign='center';CTX.fillStyle='#fff';
+        CTX.fillText('💣',bpx+TILE/2,bpy+TILE/2+4);
+      } else {
+        CTX.fillStyle='rgba(180,60,0,0.55)';CTX.fillRect(bpx+7,bpy+7,TILE-14,TILE-14);
+      }
+    }
+    // Mothers — large purple
+    for(const m of colony.mothers){
+      if(m.dead)continue;
+      const mpx=m.gx*TILE-camX,mpy=m.gy*TILE-camY;
+      if(mpx<-TILE||mpx>W+TILE||mpy<-TILE||mpy>H+TILE)continue;
+      const breathe=0.75+0.25*Math.sin(Date.now()/700+m.gx);
+      CTX.fillStyle=`rgba(160,0,200,${breathe})`;
+      CTX.beginPath();CTX.arc(mpx+TILE/2,mpy+TILE/2,TILE*0.44,0,Math.PI*2);CTX.fill();
+      CTX.fillStyle='rgba(240,120,255,0.85)';
+      CTX.beginPath();CTX.arc(mpx+TILE/2,mpy+TILE/2,TILE*0.18,0,Math.PI*2);CTX.fill();
+      CTX.fillStyle='#300030';CTX.fillRect(mpx+2,mpy-5,TILE-4,3);
+      CTX.fillStyle='#ee00ee';CTX.fillRect(mpx+2,mpy-5,(TILE-4)*(m.hp/m.maxHp),3);
+    }
+    // Workers — small green
+    for(const w of colony.workers){
+      if(w.dead)continue;
+      const wpx=w.gx*TILE-camX,wpy=w.gy*TILE-camY;
+      if(wpx<-TILE||wpx>W+TILE||wpy<-TILE||wpy>H+TILE)continue;
+      CTX.fillStyle='rgba(0,190,70,0.88)';
+      CTX.beginPath();CTX.ellipse(wpx+TILE/2,wpy+TILE/2,TILE*0.28,TILE*0.20,0,0,Math.PI*2);CTX.fill();
+      if(w.carrying){
+        CTX.fillStyle=w.carrying.type==='bomb'?'#ff4000':'#aa00ff';
+        CTX.fillRect(wpx+TILE/2-3,wpy+2,6,5);
+      }
+    }
+    // Bombers — orange spiky
+    for(const b of colony.bombers){
+      if(b.dead)continue;
+      const bpx=b.gx*TILE-camX,bpy=b.gy*TILE-camY;
+      if(bpx<-TILE||bpx>W+TILE||bpy<-TILE||bpy>H+TILE)continue;
+      CTX.fillStyle='rgba(240,90,0,0.92)';
+      CTX.beginPath();CTX.arc(bpx+TILE/2,bpy+TILE/2,TILE*0.36,0,Math.PI*2);CTX.fill();
+      CTX.strokeStyle='rgba(255,200,0,0.7)';CTX.lineWidth=2;
+      for(let si=0;si<5;si++){
+        const a=si/5*Math.PI*2+Date.now()/500;
+        CTX.beginPath();CTX.moveTo(bpx+TILE/2,bpy+TILE/2);
+        CTX.lineTo(bpx+TILE/2+Math.cos(a)*TILE*0.45,bpy+TILE/2+Math.sin(a)*TILE*0.45);CTX.stroke();
+      }
+    }
+    CTX.restore();
+  }
+
   if(GP.underground){/* skip surface aliens */} else
   for(const al of aliens){
     if(al.dead)continue;
@@ -7185,6 +7496,14 @@ function drawMM(){
       for(let _ax=-1;_ax<=1&&!_mmVis2;_ax++)for(let _ay=-1;_ay<=1&&!_mmVis2;_ay++){if(seenTiles.has(`${al.gx+_ax},${al.gy+_ay}`))_mmVis2=true;}
       if(!_mmVis2)continue;
       if(!tunnels.has(`${al.gx},${al.gy}`))continue;
+      // Colony on minimap
+      if(colony.active){
+        for(const m of colony.mothers){if(!m.dead){MMX.fillStyle='#cc00cc';MMX.fillRect(m.gx*sx-1,m.gy*sy-1,sx*2+2,sy*2+2);}}
+        for(const w of colony.workers){if(!w.dead){MMX.fillStyle='#00cc50';MMX.fillRect(w.gx*sx,w.gy*sy,sx,sy);}}
+        for(const b of colony.bombers){if(!b.dead){MMX.fillStyle='#ff6600';MMX.fillRect(b.gx*sx,b.gy*sy,sx,sy);}}
+        for(const e of alienEggs){MMX.fillStyle='rgba(160,0,255,0.7)';MMX.fillRect(e.gx*sx,e.gy*sy,sx,sy);}
+        for(const b of alienBombs){if(b.placed){MMX.fillStyle='#ff0000';MMX.fillRect(b.gx*sx-1,b.gy*sy-1,sx+2,sy+2);}}
+      }
       const _alCx=al.gx*sx+sx/2,_alCy=al.gy*sy+sy/2,_alR=al.phase==='pounce'?4:3;
       MMX.fillStyle=al.phase==='pounce'?'#ff4400':'#cc1010';
       MMX.beginPath();MMX.arc(_alCx,_alCy,_alR,0,Math.PI*2);MMX.fill();
@@ -8813,6 +9132,8 @@ function saveGame(){
     tunnels:[...tunnels],
     seenTiles:[...seenTiles],
     gasPockets:[...gasPockets],
+    colony:{gx:colony.gx,gy:colony.gy,radius:colony.radius,active:colony.active,walls:[...colony.walls],mothers:[...colony.mothers],workers:[...colony.workers],bombers:[...colony.bombers]},
+    alienEggs:[...alienEggs],alienBombs:[...alienBombs],
     oilPools:[...oilPools],
     craterTiles:[...craterTiles],
     waterTiles:[...waterTiles],
@@ -8886,6 +9207,9 @@ function loadGame(){
     tunnels.clear();(state.tunnels||[]).forEach(k=>tunnels.add(k));
     seenTiles.clear();(state.seenTiles||[]).forEach(k=>seenTiles.add(k));
     gasPockets.clear();(state.gasPockets||[]).forEach(k=>gasPockets.add(k));
+    if(state.colony){const sc=state.colony;colony.gx=sc.gx||0;colony.gy=sc.gy||0;colony.radius=sc.radius||0;colony.active=sc.active||false;colony.walls=new Set(sc.walls||[]);colony.mothers=[...(sc.mothers||[])];colony.workers=[...(sc.workers||[])];colony.bombers=[...(sc.bombers||[])];}
+    alienEggs.length=0;(state.alienEggs||[]).forEach(e=>alienEggs.push(e));
+    alienBombs.length=0;(state.alienBombs||[]).forEach(b=>alienBombs.push(b));
     oilPools.clear();(state.oilPools||[]).forEach(k=>oilPools.add(k));
     craterTiles.clear();(state.craterTiles||[]).forEach(k=>craterTiles.add(k));
     waterTiles.clear();(state.waterTiles||[]).forEach(k=>waterTiles.add(k));

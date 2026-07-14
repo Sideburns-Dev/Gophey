@@ -1,0 +1,18 @@
+{
+  "name": "Gophey",
+  "short_name": "Gophey",
+  "description": "Mine, build, survive and escape!",
+  "start_url": "/Gophey/gophey.html",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#060e08",
+  "theme_color": "#060e08",
+  "icons": [
+    {
+      "src": "icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

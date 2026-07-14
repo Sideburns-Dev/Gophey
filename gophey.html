@@ -6378,10 +6378,34 @@ function draw(){
   // World border
   CTX.strokeStyle='#7a4a10';CTX.lineWidth=3;CTX.strokeRect(-camX,-camY,WW*TILE,WH*TILE);
 
-  // Tiles — surface buildings
+  // Pass 1: belt tiles only (items will render on top of these)
   if(!GP.underground)
   for(let gx=sx;gx<=ex;gx++)for(let gy=sy;gy<=ey;gy++){
     const k=`${gx},${gy}`,t=grid[k];if(!t)continue;
+    if(!t.type||!t.type.startsWith('belt'))continue;
+    const px=gx*TILE-camX,py=gy*TILE-camY;
+    CTX.save();
+    ds(t.type,px,py,TILE,TILE,Math.floor(beltAnimF*4)%4);
+    CTX.restore();
+  }
+
+  // Belt items — drawn after belts but BEFORE buildings (so they slide under buildings)
+  if(!GP.underground)for(const it of items){
+    if(!it.on)continue;
+    let wx,wy;
+    if(it.prevDir&&it.t<=0.5){const s=it.t*2;wx=(it.gx+0.5-dx(it.prevDir)*(1-s)*0.5)*TILE-camX;wy=(it.gy+0.5-dy(it.prevDir)*(1-s)*0.5)*TILE-camY;}
+    else{if(it.prevDir&&it.t>0.5)it.prevDir=null;wx=(it.gx+.5+dx(it.dir)*(it.t-.5))*TILE-camX;wy=(it.gy+.5+dy(it.dir)*(it.t-.5))*TILE-camY;}
+    if(wx<-TILE||wx>W+TILE||wy<-TILE||wy>H+TILE)continue;
+    const beltImg=OIMG['belt_'+it.res]||OIMG['ore_on_belt'];const sz2=TILE*.52;
+    if(beltImg&&beltImg.complete&&beltImg.naturalWidth>0){CTX.imageSmoothingEnabled=false;CTX.drawImage(beltImg,wx-sz2/2,wy-sz2/2,sz2,sz2);}
+    else drawResIcon(it.res,wx,wy,sz2);
+  }
+
+  // Pass 2: all non-belt buildings (render on top of items)
+  if(!GP.underground)
+  for(let gx=sx;gx<=ex;gx++)for(let gy=sy;gy<=ey;gy++){
+    const k=`${gx},${gy}`,t=grid[k];if(!t)continue;
+    if(t.type&&t.type.startsWith('belt'))continue; // already drawn in pass 1
     const px=gx*TILE-camX,py=gy*TILE-camY;
     CTX.save();
         if(t.type==='deposit'){
@@ -6906,18 +6930,6 @@ function draw(){
 
 
 
-  }
-
-  // Belt items — drawn after tile loop (on top of belts)
-  if(!GP.underground)for(const it of items){
-    if(!it.on)continue;
-    let wx,wy;
-    if(it.prevDir&&it.t<=0.5){const s=it.t*2;wx=(it.gx+0.5-dx(it.prevDir)*(1-s)*0.5)*TILE-camX;wy=(it.gy+0.5-dy(it.prevDir)*(1-s)*0.5)*TILE-camY;}
-    else{if(it.prevDir&&it.t>0.5)it.prevDir=null;wx=(it.gx+.5+dx(it.dir)*(it.t-.5))*TILE-camX;wy=(it.gy+.5+dy(it.dir)*(it.t-.5))*TILE-camY;}
-    if(wx<-TILE||wx>W+TILE||wy<-TILE||wy>H+TILE)continue;
-    const beltImg=OIMG['belt_'+it.res]||OIMG['ore_on_belt'];const sz2=TILE*.52;
-    if(beltImg&&beltImg.complete&&beltImg.naturalWidth>0){CTX.imageSmoothingEnabled=false;CTX.drawImage(beltImg,wx-sz2/2,wy-sz2/2,sz2,sz2);}
-    else drawResIcon(it.res,wx,wy,sz2);
   }
 
   // Arm flight arcs (surface only) — smooth path: belt center → arm → dest
@@ -9856,6 +9868,37 @@ window.addEventListener('load',init);
   if('serviceWorker' in navigator){
     navigator.serviceWorker.register('sw.js').catch(()=>{});
   }
+})();
+</script>
+<!-- ── CLICK TO PLAY OVERLAY ──────────────────────────────────────────────── -->
+<div id="click-to-play" style="
+  display:flex;position:fixed;inset:0;z-index:9000;
+  align-items:center;justify-content:center;
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  background:rgba(0,0,0,0.55);cursor:pointer;flex-direction:column;gap:16px;">
+  <div style="font-family:'Orbitron',monospace;font-size:36px;color:#60ffaa;text-shadow:0 0 30px #60ffaa;font-weight:900;">GOPHEY</div>
+  <div style="font-family:'Share Tech Mono',monospace;font-size:18px;color:#c0e8c0;text-shadow:0 0 10px #40ff80;">tap anywhere to play</div>
+  <div style="width:60px;height:60px;border:3px solid rgba(100,255,150,0.5);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:28px;animation:ctp-pulse 1.4s ease-in-out infinite;">▶</div>
+</div>
+<style>
+@keyframes ctp-pulse{0%,100%{transform:scale(1);opacity:0.7;}50%{transform:scale(1.15);opacity:1;}}
+</style>
+<script>
+(function(){
+  const overlay=document.getElementById('click-to-play');
+  if(!overlay)return;
+  function dismiss(){
+    overlay.style.transition='opacity 0.3s';
+    overlay.style.opacity='0';
+    setTimeout(()=>overlay.style.display='none',300);
+    // Focus the game canvas so keys work immediately
+    const gc=document.getElementById('gc');
+    if(gc){gc.setAttribute('tabindex','0');gc.focus();}
+    document.removeEventListener('keydown',dismiss);
+  }
+  overlay.addEventListener('click',dismiss);
+  overlay.addEventListener('touchstart',e=>{e.preventDefault();dismiss();},{passive:false});
+  document.addEventListener('keydown',dismiss);
 })();
 </script>
 </body>

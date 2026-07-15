@@ -9804,12 +9804,10 @@ window.addEventListener('load',init);
 <!-- ── TOUCH CONTROLS ─────────────────────────────────────────────────────── -->
 <div id="touch-ui" style="display:none;position:fixed;inset:0;pointer-events:none;z-index:500;">
 
-  <!-- D-pad (bottom left) -->
-  <div id="dpad" style="position:absolute;bottom:24px;left:20px;width:140px;height:140px;pointer-events:all;">
-    <button id="btn-up"    style="position:absolute;top:0;left:42px;width:56px;height:56px;font-size:22px;background:rgba(0,0,0,0.55);border:2px solid rgba(100,200,100,0.5);border-radius:10px;color:#8f8;touch-action:none;">▲</button>
-    <button id="btn-left"  style="position:absolute;top:42px;left:0;width:56px;height:56px;font-size:22px;background:rgba(0,0,0,0.55);border:2px solid rgba(100,200,100,0.5);border-radius:10px;color:#8f8;touch-action:none;">◀</button>
-    <button id="btn-right" style="position:absolute;top:42px;left:84px;width:56px;height:56px;font-size:22px;background:rgba(0,0,0,0.55);border:2px solid rgba(100,200,100,0.5);border-radius:10px;color:#8f8;touch-action:none;">▶</button>
-    <button id="btn-down"  style="position:absolute;top:84px;left:42px;width:56px;height:56px;font-size:22px;background:rgba(0,0,0,0.55);border:2px solid rgba(100,200,100,0.5);border-radius:10px;color:#8f8;touch-action:none;">▼</button>
+  <!-- Joystick (bottom left) -->
+  <div id="joystick-outer" style="position:absolute;bottom:28px;left:24px;width:120px;height:120px;border-radius:50%;background:rgba(0,0,0,0.45);border:2px solid rgba(100,200,100,0.4);touch-action:none;pointer-events:all;">
+    <div id="joystick-knob" style="position:absolute;width:48px;height:48px;border-radius:50%;background:rgba(80,200,100,0.7);border:2px solid rgba(150,255,150,0.6);top:50%;left:50%;transform:translate(-50%,-50%);pointer-events:none;transition:box-shadow 0.1s;">
+    </div>
   </div>
 
   <!-- Action buttons (bottom right) -->
@@ -9835,15 +9833,44 @@ window.addEventListener('load',init);
   if(isTouchDevice()) document.getElementById('touch-ui').style.display='block';
 
   // Map buttons to key events
-  const btnKeys={
-    'btn-up':   'ArrowUp',
-    'btn-down': 'ArrowDown',
-    'btn-left': 'ArrowLeft',
-    'btn-right':'ArrowRight',
-    'btn-space':' ',
-    'btn-t':    't',
-    'btn-r':    'r',
-  };
+  // ── JOYSTICK ─────────────────────────────────────────────────────────────
+  const joystickOuter=document.getElementById('joystick-outer');
+  const joystickKnob=document.getElementById('joystick-knob');
+  if(joystickOuter){
+    const DEAD=0.22,RADIUS=46;
+    let activeKeys=new Set(),diagInterval=null,joystickActive=false,diagFlip=false;
+    function fireJoy(key,down){document.dispatchEvent(new KeyboardEvent(down?'keydown':'keyup',{key,bubbles:true,cancelable:true}));}
+    function releaseAll(){activeKeys.forEach(k=>fireJoy(k,false));activeKeys.clear();if(diagInterval){clearInterval(diagInterval);diagInterval=null;}}
+    function pressKeys(keys){activeKeys.forEach(k=>{if(!keys.includes(k))fireJoy(k,false);});keys.forEach(k=>{if(!activeKeys.has(k))fireJoy(k,true);});activeKeys=new Set(keys);}
+    function updateJoy(tx,ty){
+      const rect=joystickOuter.getBoundingClientRect();
+      const cx=rect.left+rect.width/2,cy=rect.top+rect.height/2;
+      const dx=tx-cx,dy=ty-cy,dist=Math.hypot(dx,dy);
+      const clamp=Math.min(dist,RADIUS),nx=dist?dx/dist:0,ny=dist?dy/dist:0;
+      joystickKnob.style.transform=`translate(calc(-50% + ${nx*clamp}px),calc(-50% + ${ny*clamp}px))`;
+      if(dist/(rect.width/2)<DEAD){releaseAll();return;}
+      const angle=Math.atan2(dy,dx)*180/Math.PI;
+      const abs=Math.abs(angle);
+      const isDiag=abs>22.5&&abs<67.5||abs>112.5&&abs<157.5;
+      if(diagInterval){clearInterval(diagInterval);diagInterval=null;}
+      if(!isDiag){
+        if(abs<=22.5)pressKeys(['ArrowRight']);
+        else if(abs>=157.5)pressKeys(['ArrowLeft']);
+        else if(angle>0)pressKeys(['ArrowDown']);
+        else pressKeys(['ArrowUp']);
+      } else {
+        const h=abs<90?'ArrowRight':'ArrowLeft',v=angle>0?'ArrowDown':'ArrowUp';
+        pressKeys([h]);
+        diagInterval=setInterval(()=>{diagFlip=!diagFlip;pressKeys([diagFlip?v:h]);},110);
+      }
+    }
+    joystickOuter.addEventListener('touchstart',e=>{e.preventDefault();joystickActive=true;joystickKnob.style.boxShadow='0 0 14px rgba(100,255,100,0.9)';updateJoy(e.touches[0].clientX,e.touches[0].clientY);},{passive:false});
+    joystickOuter.addEventListener('touchmove',e=>{e.preventDefault();if(joystickActive)updateJoy(e.touches[0].clientX,e.touches[0].clientY);},{passive:false});
+    joystickOuter.addEventListener('touchend',e=>{e.preventDefault();joystickActive=false;releaseAll();joystickKnob.style.transform='translate(-50%,-50%)';joystickKnob.style.boxShadow='none';},{passive:false});
+  }
+
+  // ── ACTION BUTTONS ────────────────────────────────────────────────────────
+  const btnKeys={'btn-space':' ','btn-t':'t','btn-r':'r'};
 
   function fireKey(key, down){
     const type=down?'keydown':'keyup';

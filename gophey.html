@@ -1458,7 +1458,7 @@ let lastBeltPos=null; // tracks previous tile during belt drag for smart directi
 let lastPlacePos=null; // tracks last placed tile for non-belt trail placement
 let mouseScreenX=0,mouseScreenY=0; // raw screen position for post-camera-move recompute
 
-const GS={cr:0,sc:0,dl:0,sp:0,lv:0,speed:1.5,paused:false,
+const GS={cr:0,sc:0,dl:0,sp:100000,lv:0,speed:1.5,paused:false,
           alienTimer:0,alienRate:60,waveSize:1,aliensOn:false,warned5:false,hubPos:null,
           wavesTotal:0,bossTimer:0,bossInterval:4,activeBoss:null,
           waveActiveTimer:0,  // counts up after first destruction
@@ -2191,7 +2191,7 @@ const lasers=[];    // laser beams
 const parts=[];     // particles
 const mA={},smA={},lbA={}; // accumulate timers
 
-const INV={iron:0,copper:0,coal:0,stone:0,'iron-plate':0,'copper-wire':0,sulfur:0,rocket:0,radish:0,seed:0,bullet:0,glass:0};
+const INV={iron:100000,copper:100000,coal:100000,stone:100000,'iron-plate':100000,'copper-wire':100000,sulfur:100000,rocket:100000,radish:100000,seed:100000,bullet:100000,glass:100000};
 const DEM={iron:10,copper:8,coal:6,stone:6,'iron-plate':4,'copper-wire':3};
 
 const RES={

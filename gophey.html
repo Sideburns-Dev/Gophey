@@ -1847,13 +1847,13 @@ function tickCannonProjectiles(dt){
         if(seg.gx===tx&&seg.gy===ty){worm.segs.splice(si,1);if(worm.segs.length===0)worm.dead=true;pop(tx,ty,'#aa6600');break;}
       }
     }
-    // Aliens (surface only)
+    // Aliens (surface only) — skip if inside shield
     for(const al of aliens){
       if(al.dead)continue;
+      if(colony.active&&!colony.shieldDown&&Math.hypot(al.gx-colony.gx,al.gy-colony.gy)<colony.radius)continue;
       if(Math.round(al.gx)===tx&&Math.round(al.gy)===ty){
-        al.hp=0;al.dead=true;GS.sc+=8;
-        pop(al.gx,al.gy,"#80ff60");
-        
+        al.hp=Math.max(0,al.hp-30);
+        if(al.hp<=0){al.dead=true;GS.sc+=50;pop(al.gx,al.gy,'#80ff60');}
       }
     }
     // Ant lions
@@ -1861,12 +1861,17 @@ function tickCannonProjectiles(dt){
       if(al.dead)continue;
       if(al.gx===tx&&al.gy===ty){al.hp=0;al.dead=true;GS.sc+=150;pop(al.gx,al.gy,'#ff8040');}
     }
-    // Remove if out of bounds or hit a wall
+    // Remove if out of bounds, hit a wall, or hits the colony shield
     const inBounds=p.gx>=0&&p.gx<WW&&p.gy>=0&&p.gy<WH;
     const hk=`${tx},${ty}`;
     const g=p.ug?ugGrid:grid;
     const hitWall=g[hk]&&g[hk].type==='wall';
-    if(!inBounds||hitWall)cannonProjectiles.splice(i,1);
+    const hitShield=!p.ug&&colony.active&&!colony.shieldDown&&
+      Math.hypot(p.gx-colony.gx,p.gy-colony.gy)<colony.radius;
+    if(!inBounds||hitWall||hitShield){
+      if(hitShield){pop(tx,ty,'#8040ff');biteImpact(tx,ty,'#cc80ff');} // shatter effect
+      cannonProjectiles.splice(i,1);
+    }
   }
 }
 
@@ -3647,15 +3652,20 @@ function tick(ts){
       if(aboveTile){
         notif("Can't surface here — something is above you!");
       } else {
+        // Block surfacing inside colony shield
+        if(colony.active&&!colony.shieldDown&&Math.hypot(GP.gx-colony.gx,GP.gy-colony.gy)<colony.radius){
+          notif('🛡 Alien shield prevents surfacing here!');
+        } else {
         GP.underground=false;
-        GP.holeGx=GP.gx;GP.holeGy=GP.gy; // hole where we surfaced
-        GP.holeFadeTimer=3.0; // hole fades after 3s
+        GP.holeGx=GP.gx;GP.holeGy=GP.gy;
+        GP.holeFadeTimer=3.0;
         GP.surpriseTimer=1.5;
         sel('belt');
         for(const al of aliens){
           if(al.dead)continue;
           if(Math.hypot(al.gx-GP.gx,al.gy-GP.gy)<=2){al.stunned=(al.stunned||0)+2.0;}
         }
+        } // end shield surface block
         notif('💨 Surfaced!');
       }
     }

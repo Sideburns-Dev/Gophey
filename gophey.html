@@ -2544,11 +2544,15 @@ function genWorld(){
   const _cx2=Math.floor(WW/2),_cy2=Math.floor(WH/2);
   for(let _oi=0;_oi<3;_oi++){
     let _ox,_oy,_tries=0;
+    const _minDist=_oi===0?10:25; // first pool close to base
+    const _maxDist=_oi===0?18:999;
     do{
-      _ox=6+Math.floor(Math.random()*(WW-12));
-      _oy=6+Math.floor(Math.random()*(WH-12));
+      const _a=Math.random()*Math.PI*2;
+      const _d=_minDist+Math.floor(Math.random()*(_oi===0?8:30));
+      _ox=Math.max(4,Math.min(WW-6,Math.round(_cx2+Math.cos(_a)*_d)));
+      _oy=Math.max(4,Math.min(WH-6,Math.round(_cy2+Math.sin(_a)*_d)));
       _tries++;
-    }while(_tries<50&&Math.hypot(_ox-_cx2,_oy-_cy2)<20);
+    }while(_tries<60&&(_oi>0&&Math.hypot(_ox-_cx2,_oy-_cy2)<_minDist));
     for(let _dy=0;_dy<3;_dy++)for(let _dx=0;_dx<2;_dx++)oilPools.add(`${_ox+_dx},${_oy+_dy}`);
   }
   waterTiles.clear();waterHoles.clear();craterTiles.clear();
@@ -6132,10 +6136,25 @@ function draw(){
   // ── Underground tile layer (deposits, miners, belts, shafts) ──────────────
   if(GP.underground){
     for(let ugx=sx;ugx<=ex;ugx++)for(let ugy=sy;ugy<=ey;ugy++){
-      const k=`${ugx},${ugy}`,t=ugGrid[k];if(!t)continue;
+      const k=`${ugx},${ugy}`,t=ugGrid[k];
       const dist=Math.max(Math.abs(ugx-GP.gx),Math.abs(ugy-GP.gy));
       if(dist>REVEAL_RANGE+2)continue;
       const upx=ugx*TILE-camX,upy=ugy*TILE-camY;
+      // Oil pool overlay — draw on ANY tunneled tile regardless of ugGrid entry
+      if(oilPools.has(k)&&tunnels.has(k)){
+        const _oIdx=Math.floor(Date.now()/1200)%3;
+        const _oImg=OIL_IMG[_oIdx];
+        CTX.save();CTX.globalAlpha=dist<=REVEAL_RANGE?0.75:0.4;
+        CTX.imageSmoothingEnabled=false;
+        if(_oImg&&_oImg.complete&&_oImg.naturalWidth>0){
+          CTX.drawImage(_oImg,0,0,16,16,upx,upy,TILE,TILE);
+        } else {
+          CTX.fillStyle='rgba(60,20,5,0.85)';CTX.fillRect(upx,upy,TILE,TILE);
+          CTX.fillStyle='rgba(120,40,0,0.5)';CTX.fillRect(upx+4,upy+4,TILE-8,TILE-8);
+        }
+        CTX.restore();
+      }
+      if(!t)continue;
       const alpha=dist<=REVEAL_RANGE?1:Math.max(0,1-(dist-REVEAL_RANGE)/3);
       CTX.save();
       CTX.globalAlpha=alpha;

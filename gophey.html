@@ -3040,50 +3040,38 @@ function tick(ts){
 
   // ── SIEGE SYSTEM ─────────────────────────────────────────────────────────
   // First siege: 10 min from game start. Then 5 min between sieges.
+  // Colony always visible from game start
+  if(!colony.active){initColony();GS.aliensOn=true;GS.siegePhase='building';}
+  tickColony(dt);
+
+  // Countdown to shield drop
   if(!GS.siegeStarted){
-    GS.siegeCountdown=(GS.siegeCountdown||600)-dt; // 10 minutes
+    GS.siegeCountdown=(GS.siegeCountdown||600)-dt;
     if(GS.siegeCountdown<=0){
       GS.siegeStarted=true;
-      GS.siegePhase='building'; // 'building' → 'marching' → 'defeated'
-      GS.siegeBuildTime=0;
-      GS.siegeBuildDuration=120; // colony gets 2 min to build once countdown hits
-      if(!colony.active)initColony();
-      GS.aliensOn=true;
-      notif('👁 An alien colony is forming in the distance… they\'re building up.');
-    } else if(GS.siegeCountdown<=60&&!GS._siegeWarned){
-      GS._siegeWarned=true;
-      notif('⚠ Alien siege in 60 seconds! Prepare your defenses!');
-    } else if(GS.siegeCountdown<=300&&!GS._siegeWarned5){
-      GS._siegeWarned5=true;
-      notif('⚠ Alien siege in 5 minutes. Build walls and turrets!');
-    }
-  }
-
-  if(GS.siegePhase==='building'){
-    GS.siegeBuildTime+=dt;
-    tickColony(dt);
-    // After build duration → shield drops, march begins
-    if(GS.siegeBuildTime>=GS.siegeBuildDuration){
       GS.siegePhase='marching';
       colony.shieldDown=true;
-      // All hatched attackers in aliens[] start marching
-      for(const al of aliens){al.retreating=false;al._marching=true;}
-      notif('🚨 THE ALIEN SHIELD IS DOWN — THEY\'RE MARCHING!');
+      for(const al of aliens){al.retreating=false;}
+      notif('🚨 ALIEN SHIELD DOWN — THEY ARE MARCHING!');
+    } else if(GS.siegeCountdown<=60&&!GS._siegeWarned){
+      GS._siegeWarned=true;
+      notif('⚠ Alien shield drops in 60 seconds!');
+    } else if(GS.siegeCountdown<=300&&!GS._siegeWarned5){
+      GS._siegeWarned5=true;
+      notif('⚠ Alien colony spotted — 5 minutes until they march!');
     }
   }
 
   if(GS.siegePhase==='marching'){
-    // Check if all marchers are dead → wave cleared
     const aliveMarchers=aliens.filter(a=>!a.dead);
-    if(aliveMarchers.length===0&&colony.attackers.length===0){
+    if(aliveMarchers.length===0&&(colony.attackers||[]).length===0){
       GS.siegePhase='defeated';
-      GS.siegeCountdown=300; // 5 min until next siege
+      GS.siegeCountdown=300;
       GS.siegeStarted=false;
       GS._siegeWarned=false;GS._siegeWarned5=false;
-      colony.active=false;
-      colony.shieldDown=false;
+      colony.active=false;colony.shieldDown=false;
       aliens.length=0;alienEggs.length=0;alienBombs.length=0;
-      notif('✅ Alien siege repelled! 5 minutes until the next wave…');
+      notif('✅ Siege repelled! Next wave in 5 minutes…');
     }
   }
 

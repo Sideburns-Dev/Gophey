@@ -294,6 +294,15 @@ html,body{width:100%;height:100%;overflow:hidden;background:#060e08;color:#c8d8e
     </div>
     <div id="canvas-area">
       <canvas id="minimap" width="150" height="94"></canvas>
+      <div id="alien-key" style="position:absolute;bottom:0;right:158px;background:rgba(0,0,0,0.75);border:1px solid #333;padding:4px 6px;font-family:'Share Tech Mono',monospace;font-size:9px;line-height:1.7;pointer-events:none;display:none;">
+        <div style="color:#ee00ee;">■ Mother</div>
+        <div style="color:#00ee60;">■ Worker</div>
+        <div style="color:#ff7700;">■ Bomber</div>
+        <div style="color:#aa00ff;">■ Egg</div>
+        <div style="color:#ff3020;">● Attacker</div>
+        <div style="color:#ff2020;">■ Bomb</div>
+        <div style="color:#8040ff;">⬤ Shield</div>
+      </div>
     </div>
   </div>
   <div id="bottom">
@@ -3163,7 +3172,11 @@ function tick(ts){
           for(const d of dirs2){
             const nx2=al.gx+d.dx, ny2=al.gy+d.dy;
             const nt=grid[`${nx2},${ny2}`];
-            if(!solid(nt)&&!isWall(nt)){
+            // Block alien from exiting colony shield while it's up
+            const _exitingShield=colony.active&&!colony.shieldDown&&
+              Math.hypot(al.gx-colony.gx,al.gy-colony.gy)<colony.radius&&
+              Math.hypot(nx2-colony.gx,ny2-colony.gy)>=colony.radius;
+            if(!solid(nt)&&!isWall(nt)&&!_exitingShield){
               al.gx=nx2;al.gy=ny2;
               al.facing=d.dx>0?'right':d.dx<0?'left':d.dy>0?'down':'up';
               checkPressurePlate(al.gx,al.gy,false);triggerMine(al.gx,al.gy,false);
@@ -3731,15 +3744,17 @@ function tick(ts){
         }
       }
 
-      // Bite surface alien (1-hit kill for testing)
+      // Bite surface alien — blocked if alien is inside shield
       if(!acted&&!GP.underground){
         for(const al of aliens){
           if(al.dead)continue;
+          // Can't bite aliens inside their energy shield
+          if(colony.active&&!colony.shieldDown&&Math.hypot(al.gx-colony.gx,al.gy-colony.gy)<colony.radius)continue;
           if(Math.abs(al.gx-GP.gx)<=1&&Math.abs(al.gy-GP.gy)<=1){
             pendingBiteAction=()=>{
-              al.hp=0;al.dead=true;GS.sc+=8;
+              al.hp=Math.max(0,al.hp-8);
               biteImpact(al.gx,al.gy,'#ff4020');
-              pop(al.gx,al.gy,'#ff6040');
+              if(al.hp<=0){al.dead=true;GS.sc+=50;pop(al.gx,al.gy,'#ff6040');}
             };
             acted=true;break;
           }
@@ -8274,6 +8289,7 @@ function updateUI(){
   // defense chip removed
   const dc=document.getElementById('chip-ds');if(dc)dc.style.borderColor=ds2>0?'#40a0ff':'#2a1600';
   // Siege countdown chip
+  const _ak=document.getElementById('alien-key');if(_ak)_ak.style.display=colony.active?'':'none';
   const _scc=document.getElementById('chip-siege');
   if(_scc){
     if(!GS.siegeStarted&&GS.siegeCountdown>0){

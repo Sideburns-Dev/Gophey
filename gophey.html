@@ -8211,35 +8211,35 @@ function updateSidebarVisibility(){
     // ── ALWAYS VISIBLE ──
     belt:true,
     delete:true,
+    wall:true,
+    shaft:true,
 
     // ── SURFACE ONLY ──
     hub:false,
-    smelter:!ug,
-    lab:!ug,
+    smelter:!ug&&unlocked.has('smelting'),
+    lab:!ug&&unlocked.has('circuitry'),
+    splitter:!ug&&unlocked.has('arms_tech'),
     turret:!ug&&unlocked.has('turrets'),
-    forcefield:!ug,
-    wall:true,
+    forcefield:!ug&&unlocked.has('turrets2'),
     robcenter:!ug&&unlocked.has('robots1'),
     rocket:!ug&&unlocked.has('rocketry'),
     'escape-rocket':!ug&&unlocked.has('escape_rocket'),
-    splitter:!ug&&unlocked.has('arms_tech'),
+    factory:!ug&&unlocked.has('fabrication'),
+    garden:!ug&&unlocked.has('farming'),
+    seed:!ug&&unlocked.has('farming')&&(INV.seed||0)>0,
+    fracker:!ug&&unlocked.has('oil_fracking'),
+    pipe:unlocked.has('circuitry'),
 
     // ── UNDERGROUND ONLY ──
     miner:ug,
 
-    // ── BOTH ──
-    shaft:true,
+    // ── BOTH / UNLOCKED ──
     gunpowder:unlocked.has('gunpowder'),
     'pressure-plate':unlocked.has('sensors'),
     wire:unlocked.has('circuitry'),
-    factory:!ug&&unlocked.has('fabrication'),
-    garden:!ug&&unlocked.has('farming'),
-    seed:!ug&&unlocked.has('farming')&&(INV.seed||0)>0,
     mine:unlocked.has('mines'),
     cannon:unlocked.has('cannons'),
     'laser-gen':unlocked.has('lasers'),
-    fracker:unlocked.has('oil_fracking'),
-    pipe:unlocked.has('circuitry'),
     vacuum:unlocked.has('vacuums'),
   };
 

@@ -7933,7 +7933,8 @@ function place(gx,gy,e){
       spendResources('fracker');
       grid[k]={type:'fracker',active:false,fuelRate:0};
       // Mark the tile above as fracker-top (reserved, can't build on it)
-      const _ftk=`${hgx},${hgy-1}`;
+      const[_fgx,_fgy]=k.split(',').map(Number);
+      const _ftk=`${_fgx},${_fgy-1}`;
       if(grid[_ftk]&&grid[_ftk].type!=='fracker-top'){}
       grid[_ftk]={type:'fracker-top',baseK:k};
       if(!gridByType['fracker'])gridByType['fracker']=new Set();gridByType['fracker'].add(k);

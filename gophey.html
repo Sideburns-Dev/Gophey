@@ -9101,6 +9101,12 @@ function init(){
     grid[shaftK]={type:'shaft',gx:sx,gy:sy};ugGrid[shaftK]={type:'shaft-ug',gx:sx,gy:sy};ugBuildings.add(shaftK);
     tunnels.add(shaftK);seenTiles.add(shaftK);
     for(let i=1;i<=3;i++) grid[`${sx+i},${sy}`]={type:'belt'};
+    // Place one oil pool directly below the starter shaft — guaranteed visible
+    const _opx=sx-1, _opy=sy+4;
+    for(let _dy=0;_dy<3;_dy++)for(let _dx=0;_dx<2;_dx++){
+      const _ok=`${_opx+_dx},${_opy+_dy}`;
+      oilPools.add(_ok);tunnels.add(_ok);seenTiles.add(_ok);
+    }
     // Place crashed rocket to the right of belts — core at sx+4, sy-4 so door is nearby
     const rx=sx+4, ry=sy-3;
     placeRocket(rx,ry);

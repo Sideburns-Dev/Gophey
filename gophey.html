@@ -1502,7 +1502,7 @@ let gasSpreadTimer=0;        // countdown to next gas spread
 // ── WATER HOLES ──────────────────────────────────────────────────────────────
 const craterTiles=new Set(); // surface tiles that have caved in — unusable for building
 const waterTiles=new Set();
-const oilPools=new Set(); // underground oil pool tiles (2×3 blobs)  // surface tiles covered by water
+const oilPools=new Map(); // tileKey → {cx,cy,imgIdx} — one image per pool stretched over 2×3 tiles
 const waterHoles=new Set();  // fixed water source tiles
 let waterSpreadTimer=0;
 let _gpBreath=7;             // breath bubbles (7=full)
@@ -2544,8 +2544,7 @@ function genWorld(){
   const _cx2=Math.floor(WW/2),_cy2=Math.floor(WH/2);
   for(let _oi=0;_oi<3;_oi++){
     let _ox,_oy,_tries=0;
-    const _minDist=_oi===0?10:25; // first pool close to base
-    const _maxDist=_oi===0?18:999;
+    const _minDist=_oi===0?10:25;
     do{
       const _a=Math.random()*Math.PI*2;
       const _d=_minDist+Math.floor(Math.random()*(_oi===0?8:30));
@@ -2553,7 +2552,9 @@ function genWorld(){
       _oy=Math.max(4,Math.min(WH-6,Math.round(_cy2+Math.sin(_a)*_d)));
       _tries++;
     }while(_tries<60&&(_oi>0&&Math.hypot(_ox-_cx2,_oy-_cy2)<_minDist));
-    for(let _dy=0;_dy<3;_dy++)for(let _dx=0;_dx<2;_dx++)oilPools.add(`${_ox+_dx},${_oy+_dy}`);
+    // Each pool gets one of the 3 oil images (each pool is unique)
+    for(let _dy=0;_dy<3;_dy++)for(let _dx=0;_dx<2;_dx++)
+      oilPools.set(`${_ox+_dx},${_oy+_dy}`,{cx:_ox,cy:_oy,imgIdx:_oi});
   }
   waterTiles.clear();waterHoles.clear();craterTiles.clear();
   _gpBreath=7;_gpBreathTimer=0;_gpDmgTimer=0;_dmgFlashTimer=0;
@@ -6140,14 +6141,18 @@ function draw(){
       const dist=Math.max(Math.abs(ugx-GP.gx),Math.abs(ugy-GP.gy));
       if(dist>REVEAL_RANGE+2)continue;
       const upx=ugx*TILE-camX,upy=ugy*TILE-camY;
-      // Oil pool overlay — draw on ANY tunneled tile regardless of ugGrid entry
+      // Oil pool overlay — stretch one image over the full 2×3 pool
       if(oilPools.has(k)&&tunnels.has(k)){
-        const _oIdx=Math.floor(Date.now()/1200)%3;
-        const _oImg=OIL_IMG[_oIdx];
-        CTX.save();CTX.globalAlpha=dist<=REVEAL_RANGE?0.75:0.4;
+        const _op=oilPools.get(k);
+        const _oImg=OIL_IMG[_op.imgIdx%3];
+        const _dx2=ugx-_op.cx, _dy2=ugy-_op.cy; // position within pool (0-1, 0-2)
+        CTX.save();CTX.globalAlpha=dist<=REVEAL_RANGE?0.8:0.4;
         CTX.imageSmoothingEnabled=false;
         if(_oImg&&_oImg.complete&&_oImg.naturalWidth>0){
-          CTX.drawImage(_oImg,0,0,16,16,upx,upy,TILE,TILE);
+          // Image is 48×32px covering 2 cols × 3 rows — draw the slice for this tile
+          const _iw=_oImg.naturalWidth, _ih=_oImg.naturalHeight;
+          const _sw=_iw/2, _sh=_ih/3; // source slice per tile
+          CTX.drawImage(_oImg,_dx2*_sw,_dy2*_sh,_sw,_sh,upx,upy,TILE,TILE);
         } else {
           CTX.fillStyle='rgba(60,20,5,0.85)';CTX.fillRect(upx,upy,TILE,TILE);
           CTX.fillStyle='rgba(120,40,0,0.5)';CTX.fillRect(upx+4,upy+4,TILE-8,TILE-8);
@@ -6158,20 +6163,7 @@ function draw(){
       const alpha=dist<=REVEAL_RANGE?1:Math.max(0,1-(dist-REVEAL_RANGE)/3);
       CTX.save();
       CTX.globalAlpha=alpha;
-      // Oil pool overlay (show oil when tile is in oilPools and tunneled)
-      if(oilPools.has(k)&&seenTiles.has(k)){
-        const _oIdx=Math.floor(Date.now()/1200)%3;
-        const _oImg=OIL_IMG[_oIdx];
-        CTX.imageSmoothingEnabled=false;
-        if(_oImg&&_oImg.complete&&_oImg.naturalWidth>0){
-          // OIL images are 48×32 (2 tiles wide, 1 tile tall) — tile it per tile
-          CTX.globalAlpha=0.7;
-          CTX.drawImage(_oImg,0,0,16,16,upx,upy,TILE,TILE);
-          CTX.globalAlpha=1;
-        } else {
-          CTX.fillStyle='rgba(60,20,5,0.6)';CTX.fillRect(upx,upy,TILE,TILE);
-        }
-      }
+      // (oil pool already drawn in background pass above)
       if(t.type==='deposit'){
         // Draw deposit using original pixel sprite
         const depColors={iron:'#4a2010',copper:'#5a3010',coal:'#181818',stone:'#2a2a30',sulfur:'#1a1a0a'};
@@ -6530,22 +6522,37 @@ function draw(){
         if(dx===0){CTX.fillRect(px+1,py+3,2,2);CTX.fillRect(px+1,py+TILE-5,2,2);}
         if(dx===2){CTX.fillRect(px+TILE-3,py+3,2,2);CTX.fillRect(px+TILE-3,py+TILE-5,2,2);}
       }
-      // ── Row 6 (last): ENGINE ─────────────────────────────────────────────
+      // ── Row 6 (last): ENGINE + FUEL TANKS ──────────────────────────────────
       else{
         CTX.fillStyle=_hue;CTX.fillRect(px,py,TILE,TILE);
         const engineColor=rparts.engine?.repaired?'#334':'#221';
-        if(dx===0){// left engine bell
+        const _fuel=(r.supplies.fuel||0);
+        const _fuelFrac=Math.min(1,_fuel/200);
+        const _tankH=Math.round((TILE-10)*_fuelFrac);
+        if(dx===0){
           CTX.fillStyle=engineColor;CTX.fillRect(px+2,py,TILE-2,TILE-4);
+          // Left fuel tank gauge
+          CTX.fillStyle='#112';CTX.fillRect(px+3,py+2,7,TILE-12);
+          if(_tankH>0){CTX.fillStyle=_fuelFrac>0.6?'#40aaff':_fuelFrac>0.3?'#2266cc':'#113366';CTX.fillRect(px+3,py+2+(TILE-12-_tankH),7,_tankH);}
+          CTX.strokeStyle='rgba(100,180,255,0.4)';CTX.lineWidth=1;CTX.strokeRect(px+3,py+2,7,TILE-12);
           CTX.fillStyle='#111';CTX.fillRect(px+4,py+TILE-8,TILE-6,8);
         }
-        if(dx===2){// right engine bell
+        if(dx===2){
           CTX.fillStyle=engineColor;CTX.fillRect(px,py,TILE-2,TILE-4);
+          // Right fuel tank gauge
+          CTX.fillStyle='#112';CTX.fillRect(px+TILE-10,py+2,7,TILE-12);
+          if(_tankH>0){CTX.fillStyle=_fuelFrac>0.6?'#40aaff':_fuelFrac>0.3?'#2266cc':'#113366';CTX.fillRect(px+TILE-10,py+2+(TILE-12-_tankH),7,_tankH);}
+          CTX.strokeStyle='rgba(100,180,255,0.4)';CTX.lineWidth=1;CTX.strokeRect(px+TILE-10,py+2,7,TILE-12);
           CTX.fillStyle='#111';CTX.fillRect(px+2,py+TILE-8,TILE-6,8);
         }
-        if(dx===1){// centre main engine
+        if(dx===1){
           CTX.fillStyle=engineColor;CTX.fillRect(px+2,py,TILE-4,TILE-4);
+          // Centre: fuel % label
+          if(_fuelFrac>0){CTX.font='7px monospace';CTX.textAlign='center';CTX.fillStyle='#80c8ff';CTX.fillText(`⛽${Math.round(_fuelFrac*100)}%`,px+TILE/2,py+10);}
           CTX.fillStyle='#111';CTX.fillRect(px+3,py+TILE-10,TILE-6,10);
-          if(frac>=1){// engine glow
+          // Blue glow while filling
+          if(_fuelFrac>0&&_fuelFrac<1){const _fg=0.25+0.15*Math.sin(Date.now()/350);CTX.fillStyle=`rgba(30,80,220,${_fg})`;CTX.fillRect(px,py,TILE,TILE);}
+          if(frac>=1){
             const _gp=0.5+0.5*Math.sin(Date.now()/150);
             const _eg=CTX.createRadialGradient(px+TILE/2,py+TILE,0,px+TILE/2,py+TILE,TILE*0.7);
             _eg.addColorStop(0,`rgba(255,160,40,${_gp})`);_eg.addColorStop(1,'rgba(255,80,0,0)');
@@ -9105,7 +9112,7 @@ function init(){
     const _opx=sx-1, _opy=sy+4;
     for(let _dy=0;_dy<3;_dy++)for(let _dx=0;_dx<2;_dx++){
       const _ok=`${_opx+_dx},${_opy+_dy}`;
-      oilPools.add(_ok);tunnels.add(_ok);seenTiles.add(_ok);
+      oilPools.set(_ok,{cx:_opx,cy:_opy,imgIdx:0});tunnels.add(_ok);seenTiles.add(_ok);
     }
     // Place crashed rocket to the right of belts — core at sx+4, sy-4 so door is nearby
     const rx=sx+4, ry=sy-3;
@@ -9199,7 +9206,7 @@ function saveGame(){
     gasPockets:[...gasPockets],
     colony:{gx:colony.gx,gy:colony.gy,radius:colony.radius,active:colony.active,walls:[...colony.walls],mothers:[...colony.mothers],workers:[...colony.workers],bombers:[...colony.bombers]},
     alienEggs:[...alienEggs],alienBombs:[...alienBombs],
-    oilPools:[...oilPools],
+    oilPools:[...oilPools.entries()].map(([k,v])=>({k,...v})),
     craterTiles:[...craterTiles],
     waterTiles:[...waterTiles],
     gasActive:[...gasActive],
@@ -9275,7 +9282,7 @@ function loadGame(){
     if(state.colony){const sc=state.colony;colony.gx=sc.gx||0;colony.gy=sc.gy||0;colony.radius=sc.radius||0;colony.active=sc.active||false;colony.walls=new Set(sc.walls||[]);colony.mothers=[...(sc.mothers||[])];colony.workers=[...(sc.workers||[])];colony.bombers=[...(sc.bombers||[])];}
     alienEggs.length=0;(state.alienEggs||[]).forEach(e=>alienEggs.push(e));
     alienBombs.length=0;(state.alienBombs||[]).forEach(b=>alienBombs.push(b));
-    oilPools.clear();(state.oilPools||[]).forEach(k=>oilPools.add(k));
+    oilPools.clear();(state.oilPools||[]).forEach(e=>oilPools.set(e.k,{cx:e.cx,cy:e.cy,imgIdx:e.imgIdx}));
     craterTiles.clear();(state.craterTiles||[]).forEach(k=>craterTiles.add(k));
     waterTiles.clear();(state.waterTiles||[]).forEach(k=>waterTiles.add(k));
     gasActive.clear();(state.gasActive||[]).forEach(k=>{gasActive.add(k);gasOpacity.set(k,1);});

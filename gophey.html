@@ -7943,9 +7943,9 @@ function place(gx,gy,e){
       return;
     }
     else if(tool==='pipe'){
-      // Check if this pipe is adjacent to a fracker — only bottom side allowed
-      for(const _d of [{dx:1,dy:0},{dx:-1,dy:0},{dx:0,dy:-1}]){ // left, right, top — disallowed
-        const _fk=`${hgx+_d.dx},${hgy+_d.dy}`;
+      const[_pgx,_pgy]=k.split(',').map(Number);
+      for(const _d of [{dx:1,dy:0},{dx:-1,dy:0},{dx:0,dy:-1}]){
+        const _fk=`${_pgx+_d.dx},${_pgy+_d.dy}`;
         if(grid[_fk]?.type==='fracker'){notif('⚠ Connect pipe to the BOTTOM of the fracker!');return;}
       }
       grid[k]={type:'pipe',dir:0};

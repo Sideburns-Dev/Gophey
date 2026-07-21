@@ -7485,6 +7485,19 @@ function drawMM(){
         MMX.fillStyle=bc;MMX.fillRect(gx*sx,gy*sy,Math.max(2,sx),Math.max(2,sy));
       }
     }
+    // ── COLONY on minimap — always visible, no sight check needed ────────────
+    if(colony.active){
+      if(!colony.shieldDown){
+        const _msx=colony.gx*sx,_msy=colony.gy*sy,_msr=(colony.radius+1.5)*Math.max(sx,sy);
+        MMX.strokeStyle='rgba(160,80,255,0.9)';MMX.lineWidth=2;
+        MMX.beginPath();MMX.arc(_msx,_msy,_msr,0,Math.PI*2);MMX.stroke();
+        MMX.fillStyle='rgba(80,0,200,0.2)';MMX.beginPath();MMX.arc(_msx,_msy,_msr,0,Math.PI*2);MMX.fill();
+      }
+      for(const m of colony.mothers){if(!m.dead){MMX.fillStyle='#ee00ee';MMX.fillRect(m.gx*sx-1,m.gy*sy-1,Math.max(3,sx*2),Math.max(3,sy*2));}}
+      for(const w of colony.workers){if(!w.dead){MMX.fillStyle='#00ee60';MMX.fillRect(w.gx*sx,w.gy*sy,Math.max(2,sx),Math.max(2,sy));}}
+      for(const b of colony.bombers){if(!b.dead){MMX.fillStyle='#ff7700';MMX.fillRect(b.gx*sx,b.gy*sy,Math.max(2,sx),Math.max(2,sy));}}
+      for(const e of alienEggs){MMX.fillStyle='rgba(180,0,255,0.8)';MMX.fillRect(e.gx*sx,e.gy*sy,Math.max(2,sx),Math.max(2,sy));}
+    }
     for(const al of aliens){
       if(!al.dead){MMX.fillStyle="#ff3020";const s2=3;MMX.fillRect(al.gx*sx-s2/2,al.gy*sy-s2/2,s2,s2);}
     }
@@ -7561,21 +7574,6 @@ function drawMM(){
       for(let _ax=-1;_ax<=1&&!_mmVis2;_ax++)for(let _ay=-1;_ay<=1&&!_mmVis2;_ay++){if(seenTiles.has(`${al.gx+_ax},${al.gy+_ay}`))_mmVis2=true;}
       if(!_mmVis2)continue;
       if(!tunnels.has(`${al.gx},${al.gy}`))continue;
-      // Colony on minimap
-      if(colony.active){
-        // Shield ring on minimap
-        if(!colony.shieldDown){
-          const _msx=colony.gx*sx,_msy=colony.gy*sy,_msr=(colony.radius+1)*Math.max(sx,sy);
-          MMX.strokeStyle=`rgba(160,80,255,0.7)`;MMX.lineWidth=2;
-          MMX.beginPath();MMX.arc(_msx,_msy,_msr,0,Math.PI*2);MMX.stroke();
-          MMX.fillStyle='rgba(80,0,200,0.15)';MMX.beginPath();MMX.arc(_msx,_msy,_msr,0,Math.PI*2);MMX.fill();
-        }
-        for(const m of colony.mothers){if(!m.dead){MMX.fillStyle='#cc00cc';MMX.fillRect(m.gx*sx-1,m.gy*sy-1,sx*2+2,sy*2+2);}}
-        for(const w of colony.workers){if(!w.dead){MMX.fillStyle='#00cc50';MMX.fillRect(w.gx*sx,w.gy*sy,sx,sy);}}
-        for(const b of colony.bombers){if(!b.dead){MMX.fillStyle='#ff6600';MMX.fillRect(b.gx*sx,b.gy*sy,sx,sy);}}
-        for(const e of alienEggs){MMX.fillStyle='rgba(160,0,255,0.7)';MMX.fillRect(e.gx*sx,e.gy*sy,sx,sy);}
-        for(const b of alienBombs){if(b.placed){MMX.fillStyle='#ff0000';MMX.fillRect(b.gx*sx-1,b.gy*sy-1,sx+2,sy+2);}}
-      }
       const _alCx=al.gx*sx+sx/2,_alCy=al.gy*sy+sy/2,_alR=al.phase==='pounce'?4:3;
       MMX.fillStyle=al.phase==='pounce'?'#ff4400':'#cc1010';
       MMX.beginPath();MMX.arc(_alCx,_alCy,_alR,0,Math.PI*2);MMX.fill();

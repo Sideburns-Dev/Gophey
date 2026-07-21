@@ -224,6 +224,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#060e08;color:#c8d8e
     <div class="chip" style="border-color:#40a0ff;color:#40a0ff;cursor:pointer;" onclick="saveGame()">💾 SAVE</div>
     <div class="chip" style="border-color:#a060ff;color:#a060ff;cursor:pointer;" onclick="loadGame()">📂 LOAD</div>
     <div class="chip" style="border-color:#ff6040;color:#ff6040;cursor:pointer;" onclick="newGame()">🗑 NEW</div>
+    <div class="chip" id="chip-siege" style="border-color:#8040ff;color:#cc80ff;display:none;">👁 SIEGE 10:00</div>
     <div class="chip" id="hud-rocket-btn" style="border-color:#4488ff;color:#88bbff;cursor:pointer;" onclick="document.getElementById('rocket-modal').style.display='block'" title="Open Rocket Status">🚀 ROCKET</div>
     <div class="chip" style="border-color:#ff0;color:#ff0;cursor:pointer;" onclick="(function(){for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++){const t=grid[GP.gx+dx+','+( GP.gy+dy)];console.log(dx,dy,t?.type);}alert('GP='+GP.gx+','+GP.gy+' check console')})()">DEBUG</div>
     <div class="chip" id="hud-bullet" style="border-color:#88aacc;color:#88aacc;display:none;" title="Bullets — press Space while moving to shoot">🔵 <span id="bullet-count">0</span></div>
@@ -3037,62 +3038,54 @@ function tick(ts){
   for(let i=uitems.length-1;i>=0;i--){if(!uitems[i].on)uitems.splice(i,1);}
 
 
-  // Alien spawn
-  // Aliens only come when base is substantial:
-  // Need 5+ buildings AND 20+ science points AND a hub
-  if(!GS.aliensOn){
-    // TESTING: aliens disabled
-    // const buildingCount=...
-  }
-  if(GS.aliensOn){
-    // Cave respawn countdown
-    if(GS.caveDead){
-      GS.caveRespawnTimer=(GS.caveRespawnTimer||0)-dt;
-      if(GS.caveRespawnTimer<=0){
-        GS.caveDead=false;
-        GS.waveCooldown=15;
-        notif('🕳 The cave has reopened!');
-      }
-    }
-    const waveActive=!GS.caveDead&&aliens.some(a=>!a.dead);
-    const cooldownTime=waveCooldownFor();
-    if(waveActive){
-      if(GS.waveHit){
-        GS.waveActiveTimer+=dt;
-        const buildCount2=gridKeys('turret').size+gridKeys('wall').size+gridKeys('miner').size+gridKeys('smelter').size+gridKeys('lab').size;
-        const waveDuration=Math.min(300, 45+buildCount2*4+alienTier()*20);
-        if(GS.waveActiveTimer>=waveDuration){
-          for(const al of aliens){if(!al.dead)al.retreating=true;}
-          GS.waveActiveTimer=0;GS.waveHit=false;
-          GS.waveCooldown=cooldownTime;
-          notif('↩ Aliens retreating!');
-        }
-      }
-    } else if(!GS.caveDead&&GS.waveCooldown>0){
-      // Pause countdown while underground
-      if(!GP.underground) GS.waveCooldown-=dt;
-    } else if(!GS.caveDead&&GS.waveCooldown<=0){
-      // Wave is ready — but wait for player to surface first
-      if(GP.underground){
-        // Hold here, don't tick below 0
-      } else {
-        // Player is on surface — add a short random delay (3-8s) then spawn
-        if(!GS._waveSurfaceDelay){
-          GS._waveSurfaceDelay=3+Math.random()*5;
-        }
-        GS._waveSurfaceDelay-=dt;
-        if(GS._waveSurfaceDelay<=0){
-          GS._waveSurfaceDelay=null;
-          GS.waveActiveTimer=0;
-          if(!colony.active)initColony();
-          spawnWave();
-          GS.waveCooldown=cooldownTime;
-        }
-      }
+  // ── SIEGE SYSTEM ─────────────────────────────────────────────────────────
+  // First siege: 10 min from game start. Then 5 min between sieges.
+  if(!GS.siegeStarted){
+    GS.siegeCountdown=(GS.siegeCountdown||600)-dt; // 10 minutes
+    if(GS.siegeCountdown<=0){
+      GS.siegeStarted=true;
+      GS.siegePhase='building'; // 'building' → 'marching' → 'defeated'
+      GS.siegeBuildTime=0;
+      GS.siegeBuildDuration=120; // colony gets 2 min to build once countdown hits
+      if(!colony.active)initColony();
+      GS.aliensOn=true;
+      notif('👁 An alien colony is forming in the distance… they\'re building up.');
+    } else if(GS.siegeCountdown<=60&&!GS._siegeWarned){
+      GS._siegeWarned=true;
+      notif('⚠ Alien siege in 60 seconds! Prepare your defenses!');
+    } else if(GS.siegeCountdown<=300&&!GS._siegeWarned5){
+      GS._siegeWarned5=true;
+      notif('⚠ Alien siege in 5 minutes. Build walls and turrets!');
     }
   }
 
-  tickColony(dt);
+  if(GS.siegePhase==='building'){
+    GS.siegeBuildTime+=dt;
+    tickColony(dt);
+    // After build duration → shield drops, march begins
+    if(GS.siegeBuildTime>=GS.siegeBuildDuration){
+      GS.siegePhase='marching';
+      colony.shieldDown=true;
+      // All hatched attackers in aliens[] start marching
+      for(const al of aliens){al.retreating=false;al._marching=true;}
+      notif('🚨 THE ALIEN SHIELD IS DOWN — THEY\'RE MARCHING!');
+    }
+  }
+
+  if(GS.siegePhase==='marching'){
+    // Check if all marchers are dead → wave cleared
+    const aliveMarchers=aliens.filter(a=>!a.dead);
+    if(aliveMarchers.length===0&&colony.attackers.length===0){
+      GS.siegePhase='defeated';
+      GS.siegeCountdown=300; // 5 min until next siege
+      GS.siegeStarted=false;
+      GS._siegeWarned=false;GS._siegeWarned5=false;
+      colony.active=false;
+      colony.shieldDown=false;
+      aliens.length=0;alienEggs.length=0;alienBombs.length=0;
+      notif('✅ Alien siege repelled! 5 minutes until the next wave…');
+    }
+  }
 
   // Alien movement
   for(const al of aliens){
@@ -3597,7 +3590,10 @@ function tick(ts){
       if(!GP.underground){
         // Gophey can walk on anything that isn't a solid blocking building
         const gpSolid=nt&&nt.type!=='deposit'&&!nt.type.startsWith('belt')&&nt.type!=='forcefield'&&nt.type!=='rocket-wing'&&nt.type!=='robcenter-wing'&&nt.type!=='gunpowder'&&nt.type!=='pressure-plate'&&nt.type!=='mine'&&nt.type!=='shaft'&&nt.type!=='laser-gen'&&nt.type!=='splitter'&&!nt.type.startsWith('cannon')&&nt.type!=='wire'&&nt.type!=='pipe'&&nt.type!=='fracker-top';
-        if(!gpSolid){GP.gx=nx;GP.gy=ny;checkPressurePlate(GP.gx,GP.gy,false);triggerMine(GP.gx,GP.gy,false);}
+        // Block Gophey from entering colony while shield is up
+        const _inShield=colony.active&&!colony.shieldDown&&Math.hypot(nx-colony.gx,ny-colony.gy)<colony.radius;
+        if(!gpSolid&&!_inShield){GP.gx=nx;GP.gy=ny;checkPressurePlate(GP.gx,GP.gy,false);triggerMine(GP.gx,GP.gy,false);}
+        else if(_inShield){notif('🛡 Alien energy shield blocks your path!');}
       } else {
         // Underground movement — blocked by underground walls
         if(ugGrid[nk]?.type==='wall'){} // can't dig through walls
@@ -7047,6 +7043,22 @@ function draw(){
 
   // ── COLONY RENDER ──────────────────────────────────────────────────────────
   if(!GP.underground&&colony.active){
+    // Energy shield — visible dome while building
+    if(!colony.shieldDown){
+      const _scx=colony.gx*TILE-camX,_scy=colony.gy*TILE-camY;
+      const _sr=(colony.radius+0.5)*TILE;
+      const _sp=0.35+0.2*Math.sin(Date.now()/600);
+      const _sg=CTX.createRadialGradient(_scx,_scy,_sr*0.7,_scx,_scy,_sr);
+      _sg.addColorStop(0,'rgba(80,0,200,0)');
+      _sg.addColorStop(0.85,`rgba(120,40,255,${_sp*0.3})`);
+      _sg.addColorStop(1,`rgba(180,80,255,${_sp*0.7})`);
+      CTX.save();CTX.fillStyle=_sg;CTX.beginPath();CTX.arc(_scx,_scy,_sr,0,Math.PI*2);CTX.fill();
+      // Shield ring
+      CTX.strokeStyle=`rgba(160,80,255,${_sp})`;CTX.lineWidth=3;
+      CTX.beginPath();CTX.arc(_scx,_scy,_sr,0,Math.PI*2);CTX.stroke();
+      CTX.restore();
+    }
+
     CTX.save();
     // Alien walls
     for(const wk of colony.walls){
@@ -7563,6 +7575,13 @@ function drawMM(){
       if(!tunnels.has(`${al.gx},${al.gy}`))continue;
       // Colony on minimap
       if(colony.active){
+        // Shield ring on minimap
+        if(!colony.shieldDown){
+          const _msx=colony.gx*sx,_msy=colony.gy*sy,_msr=(colony.radius+1)*Math.max(sx,sy);
+          MMX.strokeStyle=`rgba(160,80,255,0.7)`;MMX.lineWidth=2;
+          MMX.beginPath();MMX.arc(_msx,_msy,_msr,0,Math.PI*2);MMX.stroke();
+          MMX.fillStyle='rgba(80,0,200,0.15)';MMX.beginPath();MMX.arc(_msx,_msy,_msr,0,Math.PI*2);MMX.fill();
+        }
         for(const m of colony.mothers){if(!m.dead){MMX.fillStyle='#cc00cc';MMX.fillRect(m.gx*sx-1,m.gy*sy-1,sx*2+2,sy*2+2);}}
         for(const w of colony.workers){if(!w.dead){MMX.fillStyle='#00cc50';MMX.fillRect(w.gx*sx,w.gy*sy,sx,sy);}}
         for(const b of colony.bombers){if(!b.dead){MMX.fillStyle='#ff6600';MMX.fillRect(b.gx*sx,b.gy*sy,sx,sy);}}
@@ -8268,6 +8287,22 @@ function updateUI(){
   updateSidebarVisibility();
   // defense chip removed
   const dc=document.getElementById('chip-ds');if(dc)dc.style.borderColor=ds2>0?'#40a0ff':'#2a1600';
+  // Siege countdown chip
+  const _scc=document.getElementById('chip-siege');
+  if(_scc){
+    if(!GS.siegeStarted&&GS.siegeCountdown>0){
+      const _sm=Math.floor(GS.siegeCountdown/60),_ss=Math.floor(GS.siegeCountdown%60);
+      _scc.textContent=`👁 SIEGE ${_sm}:${String(_ss).padStart(2,'0')}`;
+      _scc.style.borderColor=GS.siegeCountdown<60?'#ff4040':GS.siegeCountdown<300?'#ff8040':'#8040ff';
+      _scc.style.color=GS.siegeCountdown<60?'#ff8080':GS.siegeCountdown<300?'#ffaa60':'#cc80ff';
+      _scc.style.display='';
+    } else if(GS.siegePhase==='building'){
+      const _bt=Math.max(0,GS.siegeBuildDuration-GS.siegeBuildTime);
+      _scc.textContent=`🛡 SHIELD ${Math.ceil(_bt)}s`;_scc.style.borderColor='#8040ff';_scc.style.color='#cc80ff';_scc.style.display='';
+    } else if(GS.siegePhase==='marching'){
+      _scc.textContent='🚨 SIEGE!';_scc.style.borderColor='#ff2020';_scc.style.color='#ff6060';_scc.style.display='';
+    } else {_scc.style.display='none';}
+  }
   const tc=turretCount();
   const tcEl=document.getElementById('s-tc');if(tcEl)tcEl.textContent=tc;
   const tcChip=document.getElementById('chip-tc');if(tcChip)tcChip.style.borderColor=tc>0?'#55ddff':'#2a1600';

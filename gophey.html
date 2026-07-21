@@ -8781,31 +8781,36 @@ function renderSci(){
 
   // Define nodes: {id, label, x, y, color:'green'|'cyan', req:[]}
   const nodes=[
-    // Left branch (green)
-    {id:'circ',  label:'Circuitry', x:250, y:24,  col:'green', tech:'circuitry'},
-    {id:'arms',  label:'Arms',      x:168, y:120, col:'green', tech:'arms_tech'},
-    {id:'sen',   label:'Sensors',   x:310, y:120, col:'green', tech:'sensors'},
-    // Right branch (green)
-    {id:'gun',   label:'Gunpowder', x:630, y:24,  col:'green', tech:'gunpowder'},
-    {id:'min',   label:'Mines',     x:578, y:120, col:'green', tech:'mines'},
-    {id:'can',   label:'Cannons',   x:678, y:120, col:'green', tech:'cannons'},
+    // Top row — foundational
+    {id:'smelt', label:'Metallurgy',    x:80,  y:24,  col:'green', tech:'smelting'},
+    {id:'circ',  label:'Pipes+Wires',  x:250, y:24,  col:'green', tech:'circuitry'},
+    {id:'gun',   label:'Gunpowder',    x:630, y:24,  col:'green', tech:'gunpowder'},
+    // Left branch
+    {id:'arms',  label:'Arms',         x:168, y:120, col:'green', tech:'arms_tech'},
+    {id:'sen',   label:'Sensors',      x:310, y:120, col:'green', tech:'sensors'},
+    {id:'oil',   label:'Oil Fracking', x:80,  y:120, col:'green', tech:'oil_fracking'},
+    // Right branch
+    {id:'min',   label:'Mines',        x:578, y:120, col:'green', tech:'mines'},
+    {id:'can',   label:'Cannons',      x:678, y:120, col:'green', tech:'cannons'},
     // Merged row
-    {id:'farm',  label:'Farming',   x:148, y:250, col:'green', tech:'farming'},
-    {id:'rob',   label:'Robots',    x:268, y:250, col:'green', tech:'robots1'},
-    // Chain row: Fabrication → Bullets → Turrets → Lazers
-    {id:'fab',   label:'Fabrication', x:400, y:250, col:'green', tech:'fabrication'},
-    {id:'tur',   label:'Turrets',     x:600, y:250, col:'green', tech:'turrets'},
-    {id:'laz',   label:'Lazers',      x:700, y:250, col:'green', tech:'lasers'},
+    {id:'farm',  label:'Farming',      x:148, y:250, col:'green', tech:'farming'},
+    {id:'rob',   label:'Robots',       x:268, y:250, col:'green', tech:'robots1'},
+    // Chain row: Fabrication → Turrets → Lasers
+    {id:'fab',   label:'Fabrication',  x:400, y:250, col:'green', tech:'fabrication'},
+    {id:'tur',   label:'Turrets',      x:600, y:250, col:'green', tech:'turrets'},
+    {id:'laz',   label:'Lazers',       x:700, y:250, col:'green', tech:'lasers'},
     // Below chain row
-    {id:'rok',   label:'Rockets',   x:500, y:345, col:'green', tech:'rocketry'},
-    {id:'gla',   label:'Glass',     x:700, y:345, col:'green', tech:'glass'},
+    {id:'rok',   label:'Rockets',      x:500, y:345, col:'green', tech:'rocketry'},
+    {id:'gla',   label:'Glass',        x:700, y:345, col:'green', tech:'glass'},
     // Escape
-    {id:'esc',   label:'Escape Rocket',x:390,y:430,col:'green', tech:'escape_rocket'},
+    {id:'esc',   label:'Escape Rocket',x:390, y:430, col:'green', tech:'escape_rocket'},
   ];
 
   // Connections: [fromId, toId, color]
   const G='green', C='cyan';
   const conns=[
+    // Metallurgy feeds smelting
+    ['smelt','circ',G],['smelt','oil',G],
     // Left branch
     ['circ','arms',G],['circ','sen',G],
     // Right branch
@@ -8817,7 +8822,7 @@ function renderSci(){
     ['arms','rob',G],['sen','rob',G],
     // arms+sensors → fab (start of chain)
     ['arms','fab',G],['sen','fab',G],
-    // Chain: fab → bul → tur → laz
+    // Chain: fab → tur → laz
     ['fab','tur',G],['tur','laz',G],
     // fab → rok (below fab)
     ['fab','rok',G],

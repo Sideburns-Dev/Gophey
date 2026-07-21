@@ -7943,11 +7943,6 @@ function place(gx,gy,e){
       return;
     }
     else if(tool==='pipe'){
-      const[_pgx,_pgy]=k.split(',').map(Number);
-      for(const _d of [{dx:1,dy:0},{dx:-1,dy:0},{dx:0,dy:-1}]){
-        const _fk=`${_pgx+_d.dx},${_pgy+_d.dy}`;
-        if(grid[_fk]?.type==='fracker'){notif('⚠ Connect pipe to the BOTTOM of the fracker!');return;}
-      }
       grid[k]={type:'pipe',dir:0};
     }  // dir: 0=straight-h,1=straight-v,2=corner-ne,3=corner-nw,4=corner-se,5=corner-sw
     else if(tool==='vacuum'){grid[k]={type:'vacuum',hp:hpOf('vacuum'),on:true};}

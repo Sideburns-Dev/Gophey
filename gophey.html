@@ -2595,10 +2595,6 @@ function bd(t){return t==='belt'?'right':t==='belt-up'?'up':t==='belt-down'?'dow
 function dx(d){return d==='right'?1:d==='left'?-1:0;}
 function dy(d){return d==='down'?1:d==='up'?-1:0;}
 function hpOf(t){return t==='wall'?(unlocked.has('walls2')?300:100):t==='hub'?500:t==='crashed-rocket'?300:t==='turret'?80:t==='robcenter'?400:t==='vacuum'?120:t.startsWith&&t.startsWith('cannon')?50:60;}
-function buildCount(type){
-  if(type==='robcenter')return gridKeys('robcenter-core').size;
-  return gridKeys(type).size;
-}
 function turretCount(){return gridKeys('turret').size;}
 
 function turretRange(){return unlocked.has('turrets2')?8:6;}
@@ -2626,7 +2622,6 @@ function isCoveredByTurret(gx,gy){
 }
 
 const SKIP_TYPES=new Set(['deposit','forcefield','gunpowder','pressure-plate','mine','wire']);
-function isSkipType(t){return SKIP_TYPES.has(t)||t.startsWith('belt');}
 
 // Smart alien target — uses gridByType index for performance
 function alienTarget(al){
@@ -4312,21 +4307,6 @@ function tick(ts){
 // Global error handler — show crash on screen
 // Global error handler defined after init below
 
-function doUgMine(k,t){
-  const dep=ugGrid[t.dep];if(!dep||dep.type!=='deposit')return;
-  const[gx,gy]=k.split(',').map(Number);
-  // Eject item onto adjacent underground belt
-  for(const d of [{dx:1,dy:0},{dx:-1,dy:0},{dx:0,dy:1},{dx:0,dy:-1}]){
-    const nk=`${gx+d.dx},${gy+d.dy}`,nt=ugGrid[nk];
-    if(nt&&nt.type&&nt.type.startsWith('belt')){
-      ugItems.push({gx:gx+d.dx,gy:gy+d.dy,t:0,dir:bd(nt.type),res:dep.resource,on:true});
-      return;
-    }
-  }
-  // No belt adjacent — drop to INV directly
-  INV[dep.resource]=(INV[dep.resource]||0)+1;
-}
-
 function doUMine(k,t){
   const dep=ugGrid[t.dep];if(!dep||dep.type!=='deposit')return;
   // Miner is ON the deposit — find adjacent belt around deposit tile
@@ -5515,35 +5495,6 @@ const ROCKET_DOOR_DX=1; // center top tile
 // Row 0: win_lt, win_t, win_t, win_rt
 // Row 1: win_l, vacuum, vacuum, win_r
 // Rows 2-9: plain body
-function rocketTileSprite(dx,dy,parts){
-  if(dy===0){
-    const winRepaired=parts.windows?.repaired;
-    if(dx===0)return winRepaired?'win_lt':'win_lt_broken';
-    if(dx===2)return winRepaired?'win_rt':'win_rt_broken';
-    return winRepaired?'win_t':'win_t_broken';
-  }
-  if(dy===1){
-    const vacRepaired=parts.vacuum?.repaired;
-    if(dx===0)return vacRepaired?'win_l':'win_l_broken';
-    if(dx===2)return vacRepaired?'win_r':'win_r_broken';
-    return vacRepaired?'vacuum':'vacuum_broken';
-  }
-  return null;
-}
-
-const ROCKET_PARTS=[
-  {id:'windows', name:'Window Panels',     story:'The cockpit windows are shattered. You need glass and iron plating to seal them.',              req:{ip:15, glass:20}, maxHp:120, sciReq:'glass'},
-  {id:'vacuum',  name:'Vacuum System',     story:'The life support vacuum pump is destroyed. Copper wiring and iron plating to rebuild.',           req:{ip:25, cw:15},   maxHp:100, sciReq:'vacuums'},
-  {id:'hull',    name:'Hull Plating',      story:'The outer hull is cracked from the crash. Panels blown off.',                                     req:{ip:30, glass:0},  maxHp:200, sciReq:null},
-  {id:'tanks',   name:'Fuel Tanks',        story:'The main fuel tanks are ruptured. Need sealing.',                                                 req:{ip:20, glass:5},  maxHp:150, sciReq:'glass'},
-  {id:'engine',  name:'Engine Core',       story:'The main engine is partially intact but needs heavy reinforcement.',                               req:{ip:50, glass:8},  maxHp:300, sciReq:null},
-  {id:'launch',  name:'Launch Computer',   story:'The launch system is completely fried. Rebuild with precision glass.',                             req:{ip:15, glass:20}, maxHp:60,  sciReq:'glass'},
-];
-
-
-const LAUNCH_SUPPLIES={radish:50, coal:200, sulfur:50, fuel:200};
-
-// Rocket state lives on GS.rocket
 function getRocket(){return GS.rocket||(GS.rocket={
   pos:null, // {gx,gy} = top-left of rocket
   parts:{}, // partId → {hp, repaired, repairProgress: {ip,glass}}
@@ -5551,27 +5502,9 @@ function getRocket(){return GS.rocket||(GS.rocket={
   damaged:false,
 });}
 
-function rocketCore(){
-  const r=getRocket();if(!r.pos)return null;
-  return grid[`${r.pos.gx},${r.pos.gy}`];
-}
-
-function rocketTiles(){
-  const r=getRocket();if(!r.pos)return [];
-  const tiles=[];
-  for(let dy=0;dy<ROCKET_H;dy++)for(let dx=0;dx<ROCKET_W;dx++)
-    tiles.push({gx:r.pos.gx+dx,gy:r.pos.gy+dy,k:`${r.pos.gx+dx},${r.pos.gy+dy}`});
-  return tiles;
-}
-
 function rocketDoorPos(){
   const r=getRocket();if(!r.pos)return null;
   return{gx:r.pos.gx+ROCKET_DOOR_DX,gy:r.pos.gy+ROCKET_DOOR_DY};
-}
-
-function isRocketTile(gx,gy){
-  const r=getRocket();if(!r.pos)return false;
-  return gx>=r.pos.gx&&gx<r.pos.gx+ROCKET_W&&gy>=r.pos.gy&&gy<r.pos.gy+ROCKET_H;
 }
 
 function placeRocket(cx,cy){
@@ -5596,15 +5529,6 @@ function placeRocket(cx,cy){
     }
   }
   GS.hubPos={gx:cx+ROCKET_W/2,gy:cy+ROCKET_H/2};
-}
-
-function rocketHp(){
-  const r=getRocket();let total=0,max=0;
-  for(const p of ROCKET_PARTS){
-    const s=r.parts[p.id];if(!s)continue;
-    total+=s.hp;max+=p.maxHp;
-  }
-  return{total,max};
 }
 
 function rocketAllRepaired(){
@@ -5686,12 +5610,6 @@ function alienStats(){
   return stats[tier]||stats[5];
 }
 
-function waveCooldownFor(){
-  const tier=alienTier();
-  // 3-6 min cooldowns so players have time to build
-  const cooldowns=[9999, 360, 300, 240, 180, 120];
-  return cooldowns[tier]||120;
-}
 
 // ── ALIEN COLONY FUNCTIONS ─────────────────────────────────────────────────────
 function nearestPlayerBuilding(fx,fy){
@@ -5918,50 +5836,6 @@ function tickColony(dt){
   });
 }
 
-function spawnWave(){
-  const tier=alienTier();
-  if(tier===0)return;
-  const stats=alienStats();
-  const wavesInTier=Math.max(0,(GS.wavesTotal||0));
-  const n=Math.min(stats.base+Math.floor(wavesInTier*stats.grow*0.4),50);
-  GS.waveSize=n;
-
-  // Pick a cave direction
-  const dir=pickCaveDir(GS.wavesTotal||0);
-  GS._lastCaveDir=dir;
-
-  // Start cutscene — delay actual alien spawn until cutscene ends
-  const lines=getWaveNarration(tier,GS.wavesTotal||0,dir);
-  GS.wavesTotal=(GS.wavesTotal||0)+1;
-
-  startWaveCutscene(dir, lines, ()=>{
-    // Spawn aliens after cutscene + prep time
-    for(let i=0;i<n;i++){
-      const sp=alienSpawnPos(dir,i,n);
-      const hpScale=1+wavesInTier*0.08;
-      const hp=Math.round(stats.hp*hpScale);
-      aliens.push({
-        gx:sp.gx, gy:sp.gy,
-        hp, maxHp:hp,
-        dead:false,
-        mt:Math.random()*stats.spd,
-        aa:Math.random()*0.5,
-        tier,
-        dir,
-        _moveRate:stats.spd+(Math.random()-0.5)*0.04,
-      });
-    }
-    // Boss on wave 3, then every 4 waves
-    if(tier>=2&&!GS.activeBoss){
-      const wt=GS.wavesTotal;
-      if(wt===3||wt===7||(wt>7&&(wt-3)%4===0))setTimeout(()=>spawnBoss(),2000);
-    }
-  });
-}
-
-
-function checkCavePlates(){}  // stub — dungeon system removed
-function openChest(k){}        // stub — dungeon system removed
 function destroyAt(gx,gy){
   const k=`${gx},${gy}`;if(!grid[k])return;
   pop(gx,gy,'#ff5020');
@@ -6000,7 +5874,6 @@ function pop(gx,gy,col){
 
 // ── DRAW ─────────────────────────────────────────────────────────────────────
 function ds(type,x,y,w,h,f){const s=spr(type,f||0);if(!s)return;CTX.imageSmoothingEnabled=false;CTX.drawImage(s,x,y,w,h);}
-function dsat(type,cx2,cy2,sz,f){const s=spr(type,f||0);if(!s)return;CTX.imageSmoothingEnabled=false;CTX.drawImage(s,cx2-sz/2,cy2-sz/2,sz,sz);}
 
 // Draw a resource icon centered at cx,cy with given size — uses pixel art if available
 function drawResIcon(res,cx,cy,sz){
@@ -7856,12 +7729,6 @@ function setupInput(){
   });
 }
 
-function refundTile(t){
-  if(!t||t.type==='deposit')return 0;
-  const c=COST[t.type]||0;
-  if(t.type.startsWith('belt'))return c;   // full refund on belts
-  return Math.floor(c*0.75);               // 75% refund on buildings
-}
 function place(gx,gy,e){
   if(gx<0||gy<0||gx>=WW||gy>=WH)return;
   // Underground: only belts, miners (adjacent to ug deposit), and delete allowed
@@ -8237,11 +8104,7 @@ function sel(t){
   }
   drawIcon(document.getElementById('bpic'),t,4);
 }
-function setSpd(s){
-  if(s===0){GS.paused=!GS.paused;document.getElementById('pbtn').classList.toggle('on',GS.paused);return;}
-  GS.paused=false;GS.speed=s;document.getElementById('pbtn').classList.remove('on');
-  document.querySelectorAll('.spd').forEach(b=>b.classList.remove('on'));event.target.classList.add('on');
-}
+
 let ntT=null;
 function notif(m){const e=document.getElementById('notif');if(!e)return;e.textContent=m;e.style.opacity='1';clearTimeout(ntT);ntT=setTimeout(()=>{const e2=document.getElementById('notif');if(e2)e2.style.opacity='0';},5000);}
 let atT=null;
@@ -9016,99 +8879,6 @@ function renderSci(){
   });
 }
 
-function renderSci_old(){
-  const el=document.getElementById('scicontent');
-  el.innerHTML='';
-
-  // Header
-  const hdr=document.createElement('div');
-  hdr.style.cssText='display:flex;align-items:center;gap:16px;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #3a1e00;';
-  hdr.innerHTML=`
-    <div style="text-align:center"><div style="font-size:20px;color:#ffbb20;font-family:Orbitron,monospace;font-weight:bold">${GS.sp}</div><div style="font-size:9px;color:#507060">SP</div></div>
-    <div style="text-align:center"><div style="font-size:20px;color:#c07010;font-family:Orbitron,monospace;font-weight:bold">LV${GS.lv}</div><div style="font-size:9px;color:#507060">Level</div></div>
-    <div style="text-align:center"><div style="font-size:20px">💎</div><div style="font-size:16px;color:#ffcc40;font-weight:bold">${GP.diamonds}</div></div>
-  `;
-  el.appendChild(hdr);
-
-  for(const tech of TECH){
-    const done=unlocked.has(tech.id);
-    const rmet=tech.req.every(r=>unlocked.has(r));
-    const resOk=!tech.res||Object.entries(tech.res).every(([r,a])=>(INV[r]||0)>=a);
-    const spOk=GS.sp>=tech.sp;
-    const dmOk=(GP.diamonds>=(tech.diamond||0));
-    const afford=spOk&&dmOk&&resOk;
-    const canClick=!done&&rmet&&afford;
-
-    const card=document.createElement('div');
-    card.className='scicard'+(done?' done':(!rmet)?' locked':'');
-    card.style.cssText=canClick?'cursor:pointer;border-color:#c07010;':'';
-
-    // Title row
-    let html=`<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
-      <span style="font-size:11px;color:${done?'#c07010':rmet?'#f0c060':'#507060'};font-weight:bold">${done?'✓ ':rmet&&afford?'▶ ':''}</span>
-      <b style="font-size:11px;color:${done?'#c07010':rmet?'#c0e0a0':'#507060'}">${tech.name}</b>
-    </div>`;
-
-    // Cost row — big symbols
-    html+=`<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">`;
-    // SP cost
-    html+=`<span style="background:#1a1800;border:1px solid ${spOk?'#ffbb20':'#604000'};border-radius:4px;padding:2px 6px;font-size:11px;color:${spOk?'#ffbb20':'#604000'}">⚗ ${tech.sp} SP</span>`;
-    // Diamond cost
-    if(tech.diamond){
-      html+=`<span style="background:#071820;border:1px solid ${dmOk?'#28c0e8':'#082840'};border-radius:4px;padding:2px 6px;font-size:11px;color:${dmOk?'#ffcc40':'#082840'}">💎 ×${tech.diamond}</span>`;
-    }
-    // Resource costs — big emoji + number
-    if(tech.res){
-      for(const[res,amt] of Object.entries(tech.res)){
-        const have=INV[res]||0;const ok=have>=amt;
-        const _ri=getResImg(res);
-        const imgUri=_ri&&_ri.src?_ri.src:'';
-        const iconHtml=imgUri?`<img src="${imgUri}" width="14" height="14" style="image-rendering:pixelated;vertical-align:middle;">`:(RES_ICON[res]||res.slice(0,2));
-        html+=`<span style="background:${ok?'#0a1a0a':'#1a0a0a'};border:1px solid ${ok?'#2a6a2a':'#6a1a1a'};border-radius:4px;padding:2px 6px;font-size:11px;color:${ok?'#90d090':'#d07070'}" title="${RES[res]?.name||res}">${iconHtml} ${have}/${amt}</span>`;
-      }
-    }
-    html+='</div>';
-
-    // "Mine next" hint — what resources to gather
-    if(!done&&rmet){
-      const missing=[];
-      if(tech.res)for(const[res,amt] of Object.entries(tech.res)){if((INV[res]||0)<amt)missing.push({res,need:amt-(INV[res]||0)});}
-      if(!spOk){}// SP just needs delivering
-      if(missing.length>0){
-        html+=`<div style="background:#070f07;border:1px solid #1a4a1a;border-radius:4px;padding:4px 8px;margin-bottom:4px;font-size:10px;color:#507050">`;
-        html+=`<span style="color:#ffbb20">⛏ mine: </span>`;
-        // Show big ore icons for what's needed
-        const mineRes=new Set((tech.mine||[]).concat(missing.map(m=>m.res)));
-        for(const r of mineRes){
-          const muri=RES_IMG[r]||'';
-          const micon=muri?`<img src="${muri}" width="18" height="18" style="image-rendering:pixelated;vertical-align:middle;">`:(RES_ICON[r]||r.slice(0,2));
-          html+=`<span title="${RES[r]?.name||r}">${micon}</span> `;
-        }
-        html+=`</div>`;
-      }
-    }
-
-    // Req line — always show
-    if(tech.req.length&&!done){
-      const reqNames=tech.req.map(r=>{const t2=TECH.find(x=>x.id===r);return{id:r,name:t2?t2.name:r,done:unlocked.has(r)};});
-      const reqDone=reqNames.every(r=>r.done);
-      html+=`<div style="font-size:9px;color:${reqDone?'#406040':'#804040'};margin-top:2px;display:flex;align-items:center;gap:4px;flex-wrap:wrap;">${reqDone?'✓':'🔒'} requires: `;
-      html+=reqNames.map(r=>`<span style="background:${r.done?'#0a200a':'#200a0a'};border:1px solid ${r.done?'#205020':'#502020'};border-radius:3px;padding:1px 5px;color:${r.done?'#60c060':'#c06060'};">${r.done?'✓ ':''}${r.name}</span>`).join(' + ');
-      html+=`</div>`;
-    }
-
-    card.innerHTML=html;
-    if(canClick){
-      card.addEventListener('click',()=>{
-        GS.sp-=tech.sp;
-        if(tech.diamond)GP.diamonds-=tech.diamond;
-        if(tech.res)for(const[r,a] of Object.entries(tech.res))INV[r]=(INV[r]||0)-a;
-        unlocked.add(tech.id);updateLv();notif(`✓ Unlocked: ${tech.name}`);renderSci();
-      });
-    }
-    el.appendChild(card);
-  }
-}
 function openRob(gx,gy){
   document.getElementById('robmodal').style.display='block';
   const el=document.getElementById('robcontent');el.innerHTML='';

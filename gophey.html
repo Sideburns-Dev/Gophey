@@ -5135,7 +5135,7 @@ function splitterIn(k, res, armKey, srcGx, srcGy){
   }
 
   // Prefer buildings over belts
-  const _bldTypes=new Set(['smelter','lab','factory','turret','hub','crashed-rocket','escape-rocket-core','escape-rocket-wing','splitter']);
+  const _bldTypes=new Set(['smelter','lab','factory','turret','hub','crashed-rocket','escape-rocket-core','escape-rocket-wing','splitter','cannon','cannon-up','cannon-left','cannon-down']);
   const _bldOuts=outputs.filter(o=>_bldTypes.has(o.type)).sort((a,b)=>a.k<b.k?-1:1);
   const _bltOuts=outputs.filter(o=>o.type&&o.type.startsWith('belt')).sort((a,b)=>a.k<b.k?-1:1);
   const pool=_bldOuts.length?_bldOuts:_bltOuts;

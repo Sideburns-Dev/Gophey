@@ -3770,6 +3770,24 @@ function tick(ts){
           }
         }
       }
+      // Bite colony units (workers, mothers, bombers) — shield blocks same as attackers
+      if(!acted&&!GP.underground){
+        for(const _grp of [colony.workers,colony.mothers,colony.bombers]){
+          for(const _u of _grp){
+            if(_u.dead)continue;
+            if(colony.active&&!colony.shieldDown&&Math.hypot(_u.gx-colony.gx,_u.gy-colony.gy)<colony.radius)continue;
+            if(Math.abs(_u.gx-GP.gx)<=1&&Math.abs(_u.gy-GP.gy)<=1){
+              pendingBiteAction=()=>{
+                _u.hp=Math.max(0,(_u.hp||15)-8);
+                biteImpact(_u.gx,_u.gy,'#ff6020');
+                if(_u.hp<=0){_u.dead=true;GS.sc+=30;pop(_u.gx,_u.gy,'#ffaa40');}
+              };
+              acted=true;break;
+            }
+          }
+          if(acted)break;
+        }
+      }
       // Bite ant lion
       if(!acted&&GP.underground){
         for(const al of antLions){
@@ -5860,12 +5878,13 @@ function tickColony(dt){
         }
         if(best){tgx=best.gx;tgy=best.gy;}
       }
-      // Step toward target
+      // Step toward target — but never exit the shield while it's up
       const dx=Math.sign(tgx-w.gx),dy=Math.sign(tgy-w.gy);
       const mx=dx!==0?dx:0,my=dx===0?dy:0;
       if(mx!==0||my!==0){
         const ngx=w.gx+mx,ngy=w.gy+my;
-        if(ngx>=0&&ngx<WW&&ngy>=0&&ngy<WH&&!grid[`${ngx},${ngy}`]){
+        const _wouldExit=!colony.shieldDown&&Math.hypot(ngx-colony.gx,ngy-colony.gy)>=colony.radius;
+        if(ngx>=0&&ngx<WW&&ngy>=0&&ngy<WH&&!grid[`${ngx},${ngy}`]&&!_wouldExit){
           w.gx=ngx;w.gy=ngy;c.ref.gx=ngx;c.ref.gy=ngy;
         }
       }
